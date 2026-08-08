@@ -55,6 +55,11 @@ class Product(models.Model):
     )
     stock = models.PositiveIntegerField(default=0)
     low_stock_threshold = models.PositiveIntegerField(default=10)
+    picture_url = models.URLField(
+        max_length=500,
+        blank=True,
+        help_text="Optional hosted product photo. A name-based placeholder is used when this is blank.",
+    )
     active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -99,6 +104,39 @@ class Product(models.Model):
     def color_class(self):
         return {"Drinks": "mint", "Pastry": "amber", "Meals": "coral", "Other": "blue"}.get(self.category, "blue")
 
+    @property
+    def picture_emoji(self):
+        name = self.name.casefold()
+        keyword_icons = (
+            (("matcha", "green tea"), "🍵"),
+            (("coffee", "latte", "espresso", "cappuccino", "americano", "mocha"), "☕"),
+            (("tea",), "🫖"),
+            (("juice", "soda", "softdrink", "soft drink", "water", "milk", "shake"), "🥤"),
+            (("croissant", "bread", "bun", "pastry"), "🥐"),
+            (("cake", "cupcake"), "🍰"),
+            (("cookie", "biscuit"), "🍪"),
+            (("donut", "doughnut"), "🍩"),
+            (("pizza",), "🍕"),
+            (("burger",), "🍔"),
+            (("noodle", "pasta", "spaghetti"), "🍜"),
+            (("rice", "meal", "lunch", "dinner"), "🍱"),
+            (("shirt", "blouse", "top", "dress", "jacket"), "👕"),
+            (("shoe", "sneaker", "slipper", "sandal"), "👟"),
+            (("bag", "purse", "wallet"), "👜"),
+            (("phone", "mobile", "tablet"), "📱"),
+            (("laptop", "computer"), "💻"),
+            (("headphone", "earphone", "speaker"), "🎧"),
+            (("cable", "charger", "adapter"), "🔌"),
+            (("dog", "cat", "pet"), "🐾"),
+            (("lipstick", "makeup", "cosmetic"), "💄"),
+            (("soap", "shampoo", "lotion"), "🧴"),
+            (("hammer", "tool", "drill"), "🛠️"),
+        )
+        for keywords, icon in keyword_icons:
+            if any(keyword in name for keyword in keywords):
+                return icon
+        return self.emoji
+
     def __str__(self):
         return f"{self.name} ({self.store.business_name})"
 
@@ -107,6 +145,11 @@ class Sale(models.Model):
     class Source(models.TextChoices):
         ONLINE = "Online", "Online checkout"
         OFFLINE_CSV = "Offline CSV", "Offline recovery CSV"
+
+    class OrderType(models.TextChoices):
+        RETAIL = "Retail", "Retail sale"
+        DINE_IN = "Dine-in", "Dine-in"
+        TAKE_OUT = "Take-out", "Take-out"
 
     PAYMENT_CHOICES = [("Cash", "Cash"), ("GCash", "GCash"), ("Card", "Card")]
     STATUS_CHOICES = [
@@ -126,10 +169,13 @@ class Sale(models.Model):
         null=True,
     )
     payment_method = models.CharField(max_length=20, choices=PAYMENT_CHOICES, default="Cash")
+    order_type = models.CharField(max_length=12, choices=OrderType.choices, default=OrderType.RETAIL)
     subtotal = models.DecimalField(max_digits=12, decimal_places=2)
     discount_rate = models.DecimalField(max_digits=5, decimal_places=2, default=0)
     discount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     loyalty_discount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    service_charge_rate = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    service_charge = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     tax = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     total = models.DecimalField(max_digits=12, decimal_places=2)
     loyalty_points_earned = models.PositiveIntegerField(default=0)
@@ -212,6 +258,7 @@ class StoreSettings(models.Model):
     }
 
     PLAN_CHOICES = [("Trial", "Trial"), ("Starter", "Starter"), ("Pro", "Pro")]
+    PLAN_PRICES = {"Trial": Decimal("0.00"), "Starter": Decimal("399.00"), "Pro": Decimal("799.00")}
     STATUS_CHOICES = [("Active", "Active"), ("Suspended", "Suspended")]
     STAFF_LIMITS = {"Trial": 0, "Starter": 2, "Pro": 10}
     ADMIN_LIMITS = {"Trial": 1, "Starter": 1, "Pro": 3}
@@ -233,6 +280,13 @@ class StoreSettings(models.Model):
         default=12,
         validators=[MinValueValidator(Decimal("0.00")), MaxValueValidator(Decimal("100.00"))],
     )
+    service_charge_rate = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=0,
+        validators=[MinValueValidator(Decimal("0.00")), MaxValueValidator(Decimal("100.00"))],
+        help_text="Cafe stores only. Percentage added to dine-in orders after discounts; take-out orders are not charged.",
+    )
     active_plan = models.CharField(max_length=20, choices=PLAN_CHOICES, default="Trial")
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="Active")
     subscription_start = models.DateField(blank=True, null=True)
@@ -252,17 +306,49 @@ class StoreSettings(models.Model):
                 condition=Q(tax_rate__gte=0, tax_rate__lte=100),
                 name="store_tax_rate_valid",
             ),
+            models.CheckConstraint(
+                condition=Q(service_charge_rate__gte=0, service_charge_rate__lte=100),
+                name="store_service_charge_rate_valid",
+            ),
         ]
 
     def clean(self):
         super().clean()
         if self.subscription_start and self.subscription_end and self.subscription_end < self.subscription_start:
             raise ValidationError({"subscription_end": "The subscription end date cannot be before its start date."})
+        if not self.supports_dining and self.service_charge_rate:
+            raise ValidationError({
+                "service_charge_rate": "Dine-in service charges are available only for Cafe stores."
+            })
+        self._validate_multi_store_plan()
+
+    def _validate_multi_store_plan(self):
+        """Prevent a shared-login store from leaving Pro.
+
+        Membership validation protects new assignments. This store-level guard
+        protects the inverse operation: changing a Pro branch to a lower plan
+        while any of its active users still belongs to another store.
+        """
+        if not self.pk or self.is_pro:
+            return
+        assigned_user_ids = self.memberships.filter(active=True).values_list("user_id", flat=True)
+        if StoreMembership.objects.filter(
+            user_id__in=assigned_user_ids,
+            active=True,
+        ).exclude(store_id=self.pk).exists():
+            raise ValidationError({
+                "active_plan": "This store has users assigned to other stores. Remove those shared assignments before changing from Pro."
+            })
 
     def save(self, *args, **kwargs):
         previous_store_type = None
         if self.pk:
             previous_store_type = type(self).objects.filter(pk=self.pk).values_list("store_type", flat=True).first()
+        # Dining concepts do not apply to retail categories. Normalizing here
+        # also protects direct model writes that do not call full_clean().
+        if not self.supports_dining:
+            self.service_charge_rate = Decimal("0.00")
+        self._validate_multi_store_plan()
         self.store_id = self.store_id.strip().upper()
         super().save(*args, **kwargs)
         if previous_store_type != self.store_type or not self.product_categories.exists():
@@ -313,6 +399,11 @@ class StoreSettings(models.Model):
     @property
     def is_pro(self):
         return self.active_plan == "Pro"
+
+    @property
+    def supports_dining(self):
+        """Return whether checkout should offer dine-in and take-out service."""
+        return self.store_type == self.StoreType.CAFE
 
     @property
     def active_staff_count(self):
@@ -384,9 +475,25 @@ class StoreMembership(models.Model):
         ]
 
     def clean(self):
+        """Apply plan limits before an active store assignment is persisted."""
         super().clean()
         if not self.store_id:
             return
+        if self.user_id and self.active:
+            # Multi-store access is an all-Pro invariant. Requiring both the
+            # destination and every existing assignment to be Pro prevents a
+            # lower-plan branch from being reached through a shared login.
+            other_memberships = StoreMembership.objects.filter(
+                user_id=self.user_id,
+                active=True,
+            ).exclude(pk=self.pk).exclude(store_id=self.store_id)
+            if other_memberships.exists() and (
+                not self.store.is_pro
+                or other_memberships.exclude(store__active_plan="Pro").exists()
+            ):
+                raise ValidationError({
+                    "user": "Multiple-store access is a Pro feature. Every store assigned to this user must use the Pro plan."
+                })
         if self.role == self.Role.ADMINISTRATOR and self.active:
             existing = StoreMembership.objects.filter(
                 store_id=self.store_id,
@@ -749,64 +856,6 @@ class StoreAuditEvent(models.Model):
 
     def __str__(self):
         return f"{self.store.store_id}: {self.action}"
-
-
-class SubscriptionRequest(models.Model):
-    class Status(models.TextChoices):
-        PENDING = "Pending", "Pending verification"
-        AWAITING_PAYMENT = "Awaiting payment", "Awaiting online payment"
-        APPROVED = "Approved", "Approved and activated"
-        REJECTED = "Rejected", "Rejected"
-        FAILED = "Failed", "Payment failed"
-        CANCELLED = "Cancelled", "Payment cancelled"
-
-    class PaymentMethod(models.TextChoices):
-        BANK_TRANSFER = "Bank transfer", "Landbank transfer"
-        CASH = "Cash", "Cash"
-        MAYA = "Maya", "Online card / Maya Checkout"
-
-    PLAN_CHOICES = [("Starter", "Starter — ₱399/month"), ("Pro", "Pro — ₱799/month")]
-    PLAN_PRICES = {"Starter": Decimal("399.00"), "Pro": Decimal("799.00")}
-    PAYMENT_CHOICES = PaymentMethod.choices
-    STATUS_CHOICES = Status.choices
-
-    store = models.ForeignKey(StoreSettings, on_delete=models.CASCADE, related_name="legacy_subscription_requests")
-    requested_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="subscription_requests")
-    plan = models.CharField(max_length=20, choices=PLAN_CHOICES)
-    payment_method = models.CharField(max_length=30, choices=PAYMENT_CHOICES)
-    amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-    payer_name = models.CharField(max_length=140, blank=True)
-    payment_reference = models.CharField(max_length=120, blank=True)
-    contact_details = models.CharField(max_length=180, blank=True)
-    message = models.TextField(blank=True)
-    status = models.CharField(max_length=24, choices=STATUS_CHOICES, default=Status.PENDING)
-    provider_reference = models.CharField(max_length=36, blank=True, db_index=True)
-    provider_payment_id = models.CharField(max_length=120, blank=True, db_index=True)
-    provider_checkout_url = models.URLField(blank=True)
-    reviewed_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.SET_NULL,
-        related_name="reviewed_subscription_requests",
-        blank=True,
-        null=True,
-    )
-    reviewed_at = models.DateTimeField(blank=True, null=True)
-    activated_at = models.DateTimeField(blank=True, null=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        ordering = ["-created_at"]
-
-    def __str__(self):
-        return f"{self.plan} request by {self.requested_by}"
-
-    @property
-    def expected_amount(self):
-        return self.PLAN_PRICES[self.plan]
-
-    @property
-    def is_open(self):
-        return self.status in {self.Status.PENDING, self.Status.AWAITING_PAYMENT}
 
 
 class DemoRequest(models.Model):

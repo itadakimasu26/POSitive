@@ -19,11 +19,11 @@
             {% include 'includes/brand_logo.html' %}
         </a>
 
-        {% if request.available_memberships|length > 1 %}
+        {% if request.multi_store_enabled %}
         <form class="store-chip store-switcher" method="post" action="{% url 'switch_store' %}">
             {% csrf_token %}<input type="hidden" name="next" value="{{ request.path }}">
             <span class="store-avatar">{{ store.business_name|slice:':2'|upper }}</span>
-            <label><span class="sr-only">Current store</span><select name="store_id" aria-label="Current store" onchange="this.form.submit()">{% for membership in request.available_memberships %}<option value="{{ membership.store_id }}" {% if membership.store_id == store.pk %}selected{% endif %}>{{ membership.store.business_name }}</option>{% endfor %}</select><small>Store ID: {{ store.store_id }}</small></label>
+            <label><span class="sr-only">Current Pro store</span><select name="store_id" aria-label="Current Pro store" onchange="this.form.submit()">{% for membership in request.available_memberships %}<option value="{{ membership.store_id }}" {% if membership.store_id == store.pk %}selected{% endif %}>{{ membership.store.business_name }} · {{ membership.store.store_id }}</option>{% endfor %}</select><small>PRO MULTI-STORE · {{ request.available_memberships|length }} stores</small></label>
             <i class="online-dot {% if not store.is_subscription_active %}offline{% endif %}" title="{{ store.subscription_status }}"></i>
         </form>
         {% else %}
@@ -49,7 +49,7 @@
             {% endif %}
             {% if store.is_pro %}
             <p class="nav-caption pro-caption">Pro operations</p>
-            {% if request.store_membership.is_administrator %}<a href="{% url 'multi_store_dashboard' %}" class="{% if request.resolver_match.url_name == 'multi_store_dashboard' %}active{% endif %}"><span>◫</span>Multi-store</a>{% endif %}
+            {% if request.store_membership.is_administrator %}<a href="{% url 'multi_store_dashboard' %}" class="{% if request.resolver_match.url_name == 'multi_store_dashboard' %}active{% endif %}"><span>◫</span>All stores</a>{% endif %}
             {% if request.store_membership.can_manage_customers %}<a href="{% url 'customers' %}" class="{% if request.resolver_match.url_name == 'customers' %}active{% endif %}"><span>♧</span>Customers</a>{% endif %}
             {% if request.store_membership.can_manage_inventory %}<a href="{% url 'pro_inventory' %}" class="{% if request.resolver_match.url_name == 'pro_inventory' %}active{% endif %}"><span>⇄</span>Stock control</a>{% endif %}
             <a href="{% url 'cash_register' %}" class="{% if request.resolver_match.url_name == 'cash_register' %}active{% endif %}"><span>▣</span>Cash register</a>
@@ -76,7 +76,7 @@
     <main class="main-content">
         <header class="topbar">
             <button class="menu-button" id="menuButton" type="button" aria-label="Open menu" aria-controls="sidebar" aria-expanded="false">☰</button>
-            <div class="top-title"><p>{% block section %}Workspace{% endblock %}</p><h1>{% block page_title %}POSitive!{% endblock %}</h1></div>
+            <div class="top-title"><p>{% block section %}Workspace{% endblock %} · {{ store.business_name }}</p><h1>{% block page_title %}POSitive!{% endblock %}</h1></div>
             <div class="top-actions"><span class="sync-state"><i></i> {{ store.subscription_status }}</span><button class="theme-toggle" id="themeToggle" type="button" aria-label="Switch to dark mode" title="Switch color theme"><span>☾</span></button>{% if store.is_subscription_active %}<a class="primary compact" href="{% url 'sell' %}">＋ New sale</a>{% endif %}</div>
         </header>
 

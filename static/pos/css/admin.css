@@ -197,3 +197,6 @@ fieldset.module h2,.inline-group h2 { padding:12px 17px;background:#eef5f2;color
   .expiry-list a { grid-template-columns:32px minmax(0,1fr); }
   .expiry-list b { grid-column:2; }
 }
+/* Pro multi-store administrator assignment */
+.form-row.shared-admin-disabled { opacity:.5 }
+.form-row.pro-option-disabled select { cursor:not-allowed }

@@ -1,12 +1,84 @@
 {% extends 'pos/base.html' %}
-{% block title %}Multi-store overview — POSitive!{% endblock %}
-{% block section %}Pro operations{% endblock %}
-{% block page_title %}Multi-store overview{% endblock %}
+{% block title %}Owner super dashboard — POSitive!{% endblock %}
+{% block section %}Pro multi-store{% endblock %}
+{% block page_title %}Owner super dashboard{% endblock %}
 {% block content %}
 <div class="stack">
-    <section class="section-title"><div><span class="eyebrow">Consolidated performance · last 30 days</span><h2>Every Pro store in one view</h2><p>Compare revenue, orders, inventory, and attention items without switching stores.</p></div></section>
-    <section class="stat-grid"><article class="stat-card"><p>Pro stores</p><strong>{{ store_count }}</strong><small>Assigned to your login</small></article><article class="stat-card"><p>Combined revenue</p><strong>₱{{ total_revenue|floatformat:2 }}</strong><small>Completed sales</small></article><article class="stat-card"><p>Combined orders</p><strong>{{ total_orders }}</strong><small>Last 30 days</small></article></section>
-    <section class="card table-card"><div class="card-head table-heading"><div><h3>Store comparison</h3><p>Live tenant-scoped totals</p></div></div><div class="responsive-table"><table><thead><tr><th>Store</th><th>Revenue</th><th>Orders</th><th>Inventory units</th><th>Low stock</th><th>Status</th></tr></thead><tbody>{% for row in rows %}<tr><td><strong>{{ row.store.business_name }}</strong><small>{{ row.store.store_id }}</small></td><td>₱{{ row.revenue|floatformat:2 }}</td><td>{{ row.orders }}</td><td>{{ row.inventory_units }}</td><td>{{ row.low_stock }}</td><td><span class="status {% if row.store.is_subscription_active %}good{% else %}low{% endif %}">{{ row.store.subscription_status }}</span></td></tr>{% empty %}<tr><td colspan="6" class="empty-table">No Pro stores are assigned.</td></tr>{% endfor %}</tbody></table></div></section>
-    <section class="card activity-card"><div class="card-head"><div><h3>Recent operational activity</h3><p>Actions recorded across your Pro stores</p></div></div><div class="activity-list">{% for event in recent_activity %}<div><span class="quick-icon mint">{{ event.store.store_id|slice:':1' }}</span><span><strong>{{ event.description }}</strong><small>{{ event.store.business_name }} · {{ event.actor.username|default:'System' }} · {{ event.created_at|date:'M j, g:i A' }}</small></span></div>{% empty %}<p class="empty-small">Operational activity will appear here.</p>{% endfor %}</div></section>
+    <section class="section-title">
+        <div>
+            <span class="eyebrow">All assigned Pro stores · live portfolio view</span>
+            <h2>Every Pro store in one view</h2>
+            <p>Monitor sales, inventory, teams, subscriptions, and operational alerts before opening a specific store.</p>
+        </div>
+    </section>
+
+    <section class="stat-grid">
+        <article class="stat-card"><span class="stat-icon violet">◫</span><p>Assigned stores</p><strong>{{ store_count }}</strong><small>Pro stores you administer</small></article>
+        <article class="stat-card"><span class="stat-icon green">↗</span><p>Today's revenue</p><strong>₱{{ today_revenue|floatformat:2 }}</strong><small>{{ today_orders }} order{{ today_orders|pluralize }} today</small></article>
+        <article class="stat-card"><span class="stat-icon blue">30</span><p>30-day revenue</p><strong>₱{{ total_revenue|floatformat:2 }}</strong><small>{{ total_orders }} completed order{{ total_orders|pluralize }}</small></article>
+        <article class="stat-card"><span class="stat-icon orange">!</span><p>Needs attention</p><strong class="{% if attention_store_count %}attention{% endif %}">{{ attention_store_count }}</strong><small>{{ total_low_stock }} low-stock product{{ total_low_stock|pluralize }} portfolio-wide</small></article>
+    </section>
+
+    <section class="portfolio-store-grid" aria-label="Assigned stores">
+        {% for row in rows %}
+        <article class="card portfolio-store-card {% if row.store.pk == store.pk %}current{% endif %}">
+            <header class="portfolio-store-head">
+                <div>
+                    <span class="store-avatar">{{ row.store.business_name|slice:':2'|upper }}</span>
+                    <span><strong>{{ row.store.business_name }}</strong><small>Store ID: {{ row.store.store_id }}</small></span>
+                </div>
+                <div class="portfolio-badges">
+                    {% if row.store.pk == store.pk %}<span class="status good">Current store</span>{% endif %}
+                    <span class="status {% if row.store.is_subscription_active %}good{% else %}low{% endif %}">{{ row.store.subscription_status }}</span>
+                </div>
+            </header>
+
+            <div class="portfolio-metrics">
+                <div><span>Today</span><strong>₱{{ row.today_revenue|floatformat:2 }}</strong><small>{{ row.today_orders }} order{{ row.today_orders|pluralize }}</small></div>
+                <div><span>Last 30 days</span><strong>₱{{ row.revenue|floatformat:2 }}</strong><small>{{ row.orders }} order{{ row.orders|pluralize }}</small></div>
+                <div><span>Inventory</span><strong>{{ row.inventory_units }} units</strong><small>{{ row.product_count }} active product{{ row.product_count|pluralize }}</small></div>
+                <div><span>Stock alerts</span><strong class="{% if row.low_stock %}attention{% endif %}">{{ row.low_stock }} low</strong><small>{{ row.out_of_stock }} out of stock</small></div>
+                <div><span>Customers</span><strong>{{ row.customers }}</strong><small>Active profiles</small></div>
+                <div><span>Team</span><strong>{{ row.administrators }} admin · {{ row.staff }} staff</strong><small>{{ row.administrators|add:row.staff }} active account{{ row.administrators|add:row.staff|pluralize }}</small></div>
+            </div>
+
+            <div class="portfolio-store-meta">
+                <span><b>Subscription</b>{% if row.store.subscription_end %}Until {{ row.store.subscription_end|date:'M j, Y' }}{% else %}No end date{% endif %}</span>
+                <span><b>Register</b>{% if row.open_register %}Open · {{ row.open_register.user.username }}{% else %}Closed{% endif %}</span>
+                <span><b>Purchase orders</b>{{ row.open_purchase_orders }} awaiting receipt</span>
+                <span><b>Last sale</b>{% if row.last_sale %}{{ row.last_sale.created_at|date:'M j, g:i A' }}{% else %}No completed sales{% endif %}</span>
+            </div>
+
+            {% if row.alerts %}<div class="portfolio-alert"><strong>Attention</strong>{% for alert in row.alerts %}<span>{{ alert }}</span>{% endfor %}</div>{% endif %}
+
+            <footer class="portfolio-actions">
+                {% if row.store.pk == store.pk %}
+                    <a class="primary" href="{% url 'dashboard' %}">Open dashboard</a>
+                    <a class="secondary" href="{% url 'sell' %}">Sell</a>
+                    <a class="secondary" href="{% url 'reports' %}">Reports</a>
+                {% else %}
+                    <form method="post" action="{% url 'switch_store' %}">{% csrf_token %}<input type="hidden" name="store_id" value="{{ row.store.pk }}"><input type="hidden" name="next" value="{% url 'dashboard' %}"><button class="primary">Open dashboard</button></form>
+                    <form method="post" action="{% url 'switch_store' %}">{% csrf_token %}<input type="hidden" name="store_id" value="{{ row.store.pk }}"><input type="hidden" name="next" value="{% url 'sell' %}"><button class="secondary">Sell</button></form>
+                    <form method="post" action="{% url 'switch_store' %}">{% csrf_token %}<input type="hidden" name="store_id" value="{{ row.store.pk }}"><input type="hidden" name="next" value="{% url 'reports' %}"><button class="secondary">Reports</button></form>
+                {% endif %}
+            </footer>
+        </article>
+        {% empty %}
+        <article class="card"><p class="empty-small">No Pro stores are assigned to this administrator account.</p></article>
+        {% endfor %}
+    </section>
+
+    <section class="pro-split">
+        <article class="card">
+            <div class="card-head"><div><h3>Portfolio attention</h3><p>Subscription and inventory issues across all stores</p></div><span class="pill">{{ attention_store_count }} store{{ attention_store_count|pluralize }}</span></div>
+            <div class="compact-list">
+                {% for row in alerts %}<div><span><strong>{{ row.store.business_name }}</strong>{% for alert in row.alerts %}<small>{{ alert }}</small>{% endfor %}</span>{% if row.store.pk == store.pk %}<a href="{% url 'products' %}">Review →</a>{% else %}<form class="store-open-form" method="post" action="{% url 'switch_store' %}">{% csrf_token %}<input type="hidden" name="store_id" value="{{ row.store.pk }}"><input type="hidden" name="next" value="{% url 'products' %}"><button class="secondary">Review →</button></form>{% endif %}</div>{% empty %}<p class="empty-small">All assigned stores are looking healthy.</p>{% endfor %}
+            </div>
+        </article>
+        <article class="card activity-card">
+            <div class="card-head"><div><h3>Recent activity</h3><p>Latest actions across your Pro stores</p></div></div>
+            <div class="activity-list">{% for event in recent_activity %}<div><span class="quick-icon mint">{{ event.store.store_id|slice:':1' }}</span><span><strong>{{ event.description }}</strong><small>{{ event.store.business_name }} · {{ event.actor.username|default:'System' }} · {{ event.created_at|date:'M j, g:i A' }}</small></span></div>{% empty %}<p class="empty-small">Operational activity will appear here.</p>{% endfor %}</div>
+        </article>
+    </section>
 </div>
 {% endblock %}

@@ -4,6 +4,12 @@
 {% block section %}Sales{% endblock %}
 {% block page_title %}New sale{% endblock %}
 {% block content %}
+{% if last_completed_sale %}
+<section class="sale-complete-banner">
+    <div><span>✓</span><p><strong>Sale {{ last_completed_sale.receipt_number }} completed</strong><small>{% if store.supports_dining %}{{ last_completed_sale.order_type }} · {% endif %}{{ last_completed_sale.payment_method }} · ₱{{ last_completed_sale.total|floatformat:2 }}</small></p></div>
+    <a class="primary" href="{% url 'receipt' last_completed_sale.pk %}">View receipt</a>
+</section>
+{% endif %}
 <details class="offline-recovery">
     <summary><span>Outage recovery</span><strong>Keep selling if the web app is unavailable</strong><b>Open guide</b></summary>
     <div class="offline-recovery-body">
@@ -11,15 +17,16 @@
         <div class="offline-recovery-actions"><a class="secondary" href="{% url 'offline_sales_template' %}">Download offline-sales CSV</a><form method="post" action="{% url 'import_offline_sales' %}" enctype="multipart/form-data">{% csrf_token %}<label>{{ offline_import_form.csv_file.label }}{{ offline_import_form.csv_file }}</label><button class="primary">Validate &amp; import orders</button></form><small>Maximum 1,000 rows / 250 orders / 2 MB. Imports must be submitted within 90 days.</small></div>
     </div>
 </details>
-<section class="sell-layout" data-tax-rate="{{ store.tax_rate }}" data-barcode-scanning="{{ store.barcode_scanning|yesno:'true,false' }}" data-pro="{{ store.is_pro|yesno:'true,false' }}">
+<section class="sell-layout" data-tax-rate="{{ store.tax_rate }}" data-service-charge-rate="{{ store.service_charge_rate }}" data-supports-dining="{{ store.supports_dining|yesno:'true,false' }}" data-barcode-scanning="{{ store.barcode_scanning|yesno:'true,false' }}" data-pro="{{ store.is_pro|yesno:'true,false' }}">
     <div class="catalog-panel">
         <div class="section-title"><div><span class="eyebrow">Checkout</span><h2>What are we selling?</h2></div><span class="shortcut">Tap a product to add it</span></div>
         <div class="search-box">⌕<input id="productSearch" placeholder="{% if store.barcode_scanning %}Search products or scan barcode{% else %}Search products{% endif %}" aria-label="Search products"><span>Ctrl K</span></div>
         <div class="category-tabs" id="categoryTabs"><button class="active" data-category="All">All</button>{% regroup products by category as categories %}{% for category in categories %}<button data-category="{{ category.grouper }}">{{ category.grouper }}</button>{% endfor %}</div>
         <div class="product-grid" id="productGrid">
             {% for product in products %}
-            <button class="product-card" data-id="{{ product.pk }}" data-name="{{ product.name }}" data-barcode="{{ product.barcode }}" data-category="{{ product.category }}" data-price="{{ product.price }}" data-stock="{{ product.stock }}" data-emoji="{{ product.emoji }}" data-color="{{ product.color_class }}" {% if product.stock == 0 %}disabled{% endif %}>
-                <span class="product-art {{ product.color_class }}">{{ product.emoji }}</span><span class="product-copy"><strong>{{ product.name }}</strong><small>{{ product.stock }} in stock</small><b>₱{{ product.price|floatformat:2 }}</b></span><span class="add-dot">{% if product.stock %}＋{% else %}×{% endif %}</span>
+            <button class="product-card" data-id="{{ product.pk }}" data-name="{{ product.name }}" data-barcode="{{ product.barcode }}" data-category="{{ product.category }}" data-price="{{ product.price }}" data-stock="{{ product.stock }}" data-picture="{% if product.picture_url %}{{ product.picture_url }}{% else %}{% url 'product_placeholder' product.pk %}{% endif %}" data-placeholder="{% url 'product_placeholder' product.pk %}" data-color="{{ product.color_class }}" {% if product.stock == 0 %}disabled{% endif %}>
+                <img class="product-art" src="{% if product.picture_url %}{{ product.picture_url }}{% else %}{% url 'product_placeholder' product.pk %}{% endif %}" alt="{{ product.name }}" loading="lazy" referrerpolicy="no-referrer" onerror="this.onerror=null;this.src='{% url 'product_placeholder' product.pk %}'">
+                <span class="product-copy"><strong>{{ product.name }}</strong><small>{{ product.stock }} in stock</small><b>₱{{ product.price|floatformat:2 }}</b></span><span class="add-dot">{% if product.stock %}＋{% else %}×{% endif %}</span>
             </button>
             {% empty %}<div class="empty-state wide"><span>📦</span><strong>No products yet</strong><p>Add your first product from Inventory.</p></div>{% endfor %}
         </div>
@@ -29,10 +36,15 @@
         {% if store.is_pro %}<div class="register-state {% if register_ready %}open{% endif %}"><span>{% if register_ready %}Cash register assigned to you{% elif open_register %}Cash register awaiting handover{% else %}Cash register closed{% endif %}</span><a href="{% url 'cash_register' %}">{% if register_ready %}View register{% elif open_register %}Resume register{% else %}Open register{% endif %}</a></div>{% endif %}
         <div class="cart-lines" id="cartLines"><div class="empty-state"><span>🛒</span><strong>Your cart is empty</strong><p>Tap a product to begin a sale.</p></div></div>
         {% if store.is_pro %}<div class="pro-checkout-controls"><label>Customer<select id="customerSelect" name="customer_id" form="checkoutForm"><option value="">Walk-in customer</option>{% for customer in customers %}<option value="{{ customer.pk }}" data-points="{{ customer.loyalty_points }}">{{ customer.name }} · {{ customer.loyalty_points }} points</option>{% endfor %}</select></label><div><label>Discount %<input id="discountRate" name="discount_rate" form="checkoutForm" type="number" min="0" max="50" step="0.01" value="0"></label><label>Redeem points<input id="loyaltyPoints" name="loyalty_points" form="checkoutForm" type="number" min="0" value="0" disabled></label></div>{% if not request.store_membership.can_approve %}<details id="approvalFields"><summary>Manager approval for discounts</summary><label>Manager username<input name="approver_username" form="checkoutForm" autocomplete="off"></label><label>Manager password<input name="approver_password" form="checkoutForm" type="password" autocomplete="current-password"></label></details>{% endif %}</div>{% endif %}
-        <div class="order-summary"><p><span>Subtotal</span><strong id="subtotal">₱0.00</strong></p>{% if store.is_pro %}<p id="discountSummary" hidden><span>Discount</span><strong id="discountValue">−₱0.00</strong></p><p id="loyaltySummary" hidden><span>Loyalty</span><strong id="loyaltyValue">−₱0.00</strong></p>{% endif %}<p><span>VAT ({{ store.tax_rate }}%)</span><strong id="tax">₱0.00</strong></p><p class="grand-total"><span>Total</span><strong id="total">₱0.00</strong></p></div>
-        <div class="payment-options"><small>PAYMENT METHOD</small><div>{% for value,label in payment_choices|default:'' %}{% endfor %}<button type="button" class="active" data-payment="Cash"><span>₱</span>Cash</button><button type="button" data-payment="GCash"><span>G</span>GCash</button><button type="button" data-payment="Card"><span>▣</span>Card</button></div></div>
-        <form method="post" action="{% url 'complete_sale' %}" id="checkoutForm">{% csrf_token %}<input type="hidden" name="cart_json" id="cartJson"><input type="hidden" name="payment_method" id="paymentMethod" value="Cash"><button class="checkout-button" id="checkoutButton"><span>Charge ₱0.00</span><b>→</b></button></form>
-        <p class="checkout-note">Stock is validated again before payment completes</p>
+        {% if store.supports_dining %}<div class="order-type-options">
+            <small>ORDER TYPE</small>
+            <div><button type="button" data-order-type="Dine-in"><span>♨</span>Dine-in</button><button type="button" class="active" data-order-type="Take-out"><span>▱</span>Take-out</button></div>
+            <p>{% if store.service_charge_rate %}{{ store.service_charge_rate }}% service charge applies to dine-in orders.{% else %}No dine-in service charge is configured for this store.{% endif %}</p>
+        </div>{% endif %}
+        <div class="order-summary"><p><span>Subtotal</span><strong id="subtotal">₱0.00</strong></p>{% if store.is_pro %}<p id="discountSummary" hidden><span>Discount</span><strong id="discountValue">−₱0.00</strong></p><p id="loyaltySummary" hidden><span>Loyalty</span><strong id="loyaltyValue">−₱0.00</strong></p>{% endif %}{% if store.supports_dining %}<p id="serviceChargeSummary" hidden><span>Service charge ({{ store.service_charge_rate }}%)</span><strong id="serviceCharge">₱0.00</strong></p>{% endif %}<p><span>VAT ({{ store.tax_rate }}%)</span><strong id="tax">₱0.00</strong></p><p class="grand-total"><span>Total</span><strong id="total">₱0.00</strong></p></div>
+        <div class="payment-options"><small>PAYMENT METHOD</small><div><button type="button" class="active" data-payment="Cash"><span>₱</span>Cash</button><button type="button" data-payment="GCash"><span>G</span>GCash</button><button type="button" data-payment="Card"><span>▣</span>Card</button></div></div>
+        <form method="post" action="{% url 'complete_sale' %}" id="checkoutForm">{% csrf_token %}<input type="hidden" name="cart_json" id="cartJson"><input type="hidden" name="payment_method" id="paymentMethod" value="Cash"><input type="hidden" name="order_type" id="orderType" value="{% if store.supports_dining %}Take-out{% else %}Retail{% endif %}"><button class="checkout-button" id="checkoutButton"><span>Charge ₱0.00</span><b>→</b></button></form>
+        <p class="checkout-note">Stock and totals are validated again before payment completes</p>
     </aside>
 </section>
 {% endblock %}

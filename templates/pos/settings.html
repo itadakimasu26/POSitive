@@ -23,42 +23,19 @@
     </section>
 
     <section class="plans-section" id="subscription">
-        <div class="plans-head"><div><span class="eyebrow">Current subscription</span><h2>{{ store.active_plan }} plan</h2><p>Your plan determines team capacity and access to advanced operations.</p></div><span class="current-plan">{{ store.subscription_status|upper }}</span></div>
+        <div class="plans-head"><div><span class="eyebrow">Current subscription</span><h2>{{ store.active_plan }} plan</h2><p>{% if store.is_pro %}Pro includes shared access across assigned Pro stores, the owner super dashboard, role-based teams, and advanced operations.{% else %}Your plan covers one store. Upgrade to Pro for shared-store administration, portfolio visibility, and advanced operations.{% endif %}</p></div><span class="current-plan">{{ store.subscription_status|upper }}</span></div>
+        {% if request.multi_store_enabled %}<div class="message-banner"><span class="quick-icon mint">◫</span><div><strong>Manage every branch from the owner super dashboard</strong><small>Review portfolio totals and alerts, then open Dashboard, Sell, or Reports for any assigned Pro store.</small></div><a class="secondary" href="{% url 'multi_store_dashboard' %}">View all stores →</a></div>{% endif %}
         <div class="subscription-summary">
             <div><span>Subscription starts</span><strong>{{ store.subscription_start|date:'M j, Y'|default:'Not set' }}</strong></div>
             <div><span>Subscription ends</span><strong>{{ store.subscription_end|date:'M j, Y'|default:'No end date' }}</strong></div>
             <div><span>Staff allowance</span><strong>{{ store.staff_limit }} per store</strong></div>
             <div><span>Seats remaining</span><strong>{{ staff_slots_remaining }}</strong></div>
         </div>
-        <div class="subscription-payment-grid">
-            <form method="post" class="subscription-form" id="subscriptionPaymentForm">{% csrf_token %}<input type="hidden" name="action" value="subscription">
-                <div class="payment-form-head"><div><span class="eyebrow">Renew or upgrade</span><h3>Submit a subscription payment</h3></div><strong id="subscriptionAmount">₱399.00</strong></div>
-                {% if subscription_form.non_field_errors %}<div class="form-error">{{ subscription_form.non_field_errors }}</div>{% endif %}
-                <div class="form-row"><label>Plan{{ subscription_form.plan }}{{ subscription_form.plan.errors }}</label><label>Payment method{{ subscription_form.payment_method }}{{ subscription_form.payment_method.errors }}</label></div>
-                <div class="form-row"><label>Name used for payment{{ subscription_form.payer_name }}{{ subscription_form.payer_name.errors }}</label><label>Transaction reference{{ subscription_form.payment_reference }}{{ subscription_form.payment_reference.errors }}</label></div>
-                <label>Contact email or mobile{{ subscription_form.contact_details }}{{ subscription_form.contact_details.errors }}</label>
-                <label>Notes{{ subscription_form.message }}{{ subscription_form.message.errors }}</label>
-                <p class="payment-security-note">Landbank and cash submissions are activated as soon as the platform administrator verifies the transaction.</p>
-                <button class="primary">Submit payment for verification</button>
-            </form>
-            <div class="payment-instructions">
-                <article class="payment-instruction" data-payment-panel="Bank transfer">
-                    <div class="bank-brand"><span>🌻</span><strong>LANDBANK</strong></div>
-                    <p>Transfer using InstaPay, then enter the transaction reference in the form.</p>
-                    <dl><div><dt>Account name</dt><dd>{{ landbank_account_name }}</dd></div><div><dt>Account number</dt><dd>Account ending in {{ landbank_account_last4 }}</dd></div></dl>
-                    {% if landbank_qr_image_url %}<img class="bank-qr" src="{{ landbank_qr_image_url }}" alt="Landbank InstaPay QR code">{% else %}<div class="qr-placeholder"><strong>InstaPay QR</strong><span>The original payment QR image can be added once its file or hosted URL is available.</span></div>{% endif %}
-                </article>
-                <article class="payment-instruction" data-payment-panel="Cash" hidden>
-                    <span class="eyebrow">Cash transaction</span><h3>Contact Michael John Ojoy</h3><p>Coordinate the cash payment first. Your subscription will be activated immediately after the transaction is confirmed.</p>
-                    <ul class="payment-contacts"><li><span>Email</span><a href="mailto:{{ payment_contact_email }}">{{ payment_contact_email }}</a></li><li><span>Messenger</span><strong>{{ payment_contact_messenger }}</strong></li><li><span>SMS / Viber / WhatsApp</span><a href="tel:{{ payment_contact_phone }}">{{ payment_contact_phone }}</a></li></ul>
-                </article>
-                <aside class="instant-payment-note"><strong>Landbank activation flow</strong><p>Transfer to the Landbank account, submit the transaction reference, and contact the administrator if urgent. Once approved, the selected subscription opens immediately. GCash is temporarily disabled.</p></aside>
-            </div>
+        <div class="plan-grid">
+            <article class="plan-card {% if store.active_plan == 'Starter' %}featured{% endif %}">{% if store.active_plan == 'Starter' %}<span class="recommended">CURRENT</span>{% endif %}<span class="plan-symbol">S</span><h3>Starter</h3><p>Essential single-store checkout, inventory, receipts, and reporting.</p><div class="price"><strong>₱{{ starter_price|floatformat:0 }}</strong><span>/ month</span></div><ul><li>1 store administrator</li><li>Up to 2 cashier accounts</li><li>Standard reports and CSV exports</li></ul></article>
+            <article class="plan-card {% if store.active_plan == 'Pro' %}featured{% endif %}">{% if store.active_plan == 'Pro' %}<span class="recommended">CURRENT</span>{% else %}<span class="recommended">PRO</span>{% endif %}<span class="plan-symbol">P</span><h3>Pro</h3><p>Multi-store command center with role-based teams and advanced operations.</p><div class="price"><strong>₱{{ pro_price|floatformat:0 }}</strong><span>/ store / month</span></div><ul><li>Owner super dashboard across Pro stores</li><li>Up to 3 administrators and 10 staff per store</li><li>Advanced inventory, reports, customers, and purchasing</li></ul></article>
         </div>
-        <div class="subscription-history">
-            <div class="table-heading"><div><h3>Payment requests</h3><p>Recent verification and activation activity</p></div></div>
-            <div class="responsive-table"><table><thead><tr><th>Submitted</th><th>Plan</th><th>Method</th><th>Amount</th><th>Reference</th><th>Status</th></tr></thead><tbody>{% for item in subscription_requests %}<tr><td>{{ item.created_at|date:'M j, Y g:i A' }}</td><td>{{ item.plan }}</td><td>{{ item.get_payment_method_display }}</td><td>₱{{ item.amount|floatformat:2 }}</td><td>{{ item.payment_reference|default:'—' }}</td><td><span class="status {% if item.status == 'Approved' %}good{% else %}low{% endif %}">{{ item.get_status_display }}</span></td></tr>{% empty %}<tr><td colspan="6" class="empty-table">No payment requests yet.</td></tr>{% endfor %}</tbody></table></div>
-        </div>
+        <p class="plan-reference-note">Prices are shown for plan comparison. Subscription plans and dates are managed by the platform administrator.</p>
     </section>
     {% if store.is_pro %}<section class="card settings-card schedule-card"><div class="settings-heading"><span class="quick-icon violet">✉</span><div><h3>Scheduled report emails</h3><p>Send a daily or weekly store summary to registered recipients</p></div></div><div class="schedule-list">{% for schedule in report_schedules %}<div><span><strong>{{ schedule.recipient_email }}</strong><small>{{ schedule.frequency }} · {% if schedule.last_sent_at %}last sent {{ schedule.last_sent_at|date:'M j, g:i A' }}{% else %}not sent yet{% endif %}</small></span><form method="post" action="{% url 'remove_report_schedule' schedule.pk %}">{% csrf_token %}<button class="team-remove">Remove</button></form></div>{% empty %}<p class="empty-small">No scheduled recipients yet.</p>{% endfor %}</div><form method="post" class="schedule-form">{% csrf_token %}<input type="hidden" name="action" value="schedule"><label>Email{{ schedule_form.recipient_email }}{{ schedule_form.recipient_email.errors }}</label><label>Frequency{{ schedule_form.frequency }}{{ schedule_form.frequency.errors }}</label><button class="primary">Add schedule</button></form></section>{% endif %}
 </div>

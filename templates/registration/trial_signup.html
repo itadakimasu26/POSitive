@@ -21,6 +21,7 @@
             {% if form.non_field_errors %}<div class="form-error">{{ form.non_field_errors }}</div>{% endif %}
             <label>Business name{{ form.business_name }}{{ form.business_name.errors }}</label>
             <label>Type of store{{ form.store_type }}{{ form.store_type.errors }}<small>{{ form.store_type.help_text }}</small></label>
+            <label id="trialServiceChargeField">Dine-in service charge (%){{ form.service_charge_rate }}{{ form.service_charge_rate.errors }}<small>{{ form.service_charge_rate.help_text }}</small></label>
             <div class="trial-form-row"><label>First name{{ form.first_name }}{{ form.first_name.errors }}</label><label>Last name{{ form.last_name }}{{ form.last_name.errors }}</label></div>
             <div class="trial-form-row"><label>Username{{ form.username }}{{ form.username.errors }}</label><label>Email{{ form.email }}{{ form.email.errors }}</label></div>
             <div class="trial-form-row"><label>Password{{ form.password1 }}{{ form.password1.errors }}</label><label>Confirm password{{ form.password2 }}{{ form.password2.errors }}</label></div>
@@ -30,5 +31,6 @@
         </form>
     </section>
 </main>
+<script src="{% static 'pos/js/trial-signup.js' %}"></script>
 </body>
 </html>

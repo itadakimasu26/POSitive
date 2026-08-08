@@ -11,6 +11,12 @@ CURRENT_STORE_SESSION_KEY = "positive_current_store_id"
 
 
 def load_store_access(request):
+    """Attach the user's active, session-selected store context to a request.
+
+    Views continue to query through ``request.store`` so switching branches
+    changes the complete tenant scope instead of merely changing the display.
+    ``multi_store_enabled`` is true only when every assigned branch is Pro.
+    """
     if hasattr(request, "store_membership"):
         return request.store_membership
 
@@ -28,6 +34,12 @@ def load_store_access(request):
         request.session[CURRENT_STORE_SESSION_KEY] = membership.store_id
 
     request.available_memberships = memberships
+    # This mirrors StoreMembership.clean() and safely hides switching if legacy
+    # or bulk-updated data ever contains a mixed-plan assignment.
+    request.multi_store_enabled = (
+        len(memberships) > 1
+        and all(item.store.is_pro for item in memberships)
+    )
     request.store_membership = membership
     request.store = membership.store if membership else None
     return membership

@@ -143,28 +143,9 @@ if EMAIL_BACKEND == "django.core.mail.backends.smtp.EmailBackend" and not all(
     raise ImproperlyConfigured("SMTP email requires DJANGO_EMAIL_HOST, DJANGO_EMAIL_HOST_USER, and DJANGO_EMAIL_HOST_PASSWORD.")
 PASSWORD_RESET_TIMEOUT = int(os.getenv("DJANGO_PASSWORD_RESET_TIMEOUT", "3600"))
 
-PAYMENT_CONTACT_EMAIL = os.getenv("PAYMENT_CONTACT_EMAIL", "michaeljohnojoy26@gmail.com")
-PAYMENT_CONTACT_MESSENGER = os.getenv("PAYMENT_CONTACT_MESSENGER", "Michael John Ojoy")
-PAYMENT_CONTACT_PHONE = os.getenv("PAYMENT_CONTACT_PHONE", "09640832257")
-LANDBANK_ACCOUNT_NAME = os.getenv("LANDBANK_ACCOUNT_NAME", "Marc Gaia Ojoy")
-LANDBANK_ACCOUNT_LAST4 = os.getenv("LANDBANK_ACCOUNT_LAST4", "0940")
-LANDBANK_QR_IMAGE_URL = os.getenv("LANDBANK_QR_IMAGE_URL", "")
-MAYA_CHECKOUT_ENABLED = env_bool("MAYA_CHECKOUT_ENABLED", False)
-MAYA_PUBLIC_API_KEY = os.getenv("MAYA_PUBLIC_API_KEY", "").strip()
-MAYA_SECRET_API_KEY = os.getenv("MAYA_SECRET_API_KEY", "").strip()
-MAYA_API_BASE_URL = os.getenv("MAYA_API_BASE_URL", "https://pg-sandbox.paymaya.com").strip()
-MAYA_API_TIMEOUT = int(os.getenv("MAYA_API_TIMEOUT", "15"))
-MAYA_WEBHOOK_IP_CHECK = env_bool("MAYA_WEBHOOK_IP_CHECK", True)
-MAYA_WEBHOOK_ALLOWED_IPS = {
-    address.strip()
-    for address in os.getenv(
-        "MAYA_WEBHOOK_ALLOWED_IPS",
-        "13.229.160.234,3.1.199.75,18.138.50.235,3.1.207.200",
-    ).split(",")
-    if address.strip()
-}
-if MAYA_CHECKOUT_ENABLED and not all([MAYA_PUBLIC_API_KEY, MAYA_SECRET_API_KEY]):
-    raise ImproperlyConfigured("Maya Checkout requires MAYA_PUBLIC_API_KEY and MAYA_SECRET_API_KEY.")
+SUPPORT_CONTACT_EMAIL = os.getenv("SUPPORT_CONTACT_EMAIL", "michaeljohnojoy26@gmail.com")
+SUPPORT_CONTACT_MESSENGER = os.getenv("SUPPORT_CONTACT_MESSENGER", "Michael John Ojoy")
+SUPPORT_CONTACT_PHONE = os.getenv("SUPPORT_CONTACT_PHONE", "09640832257")
 
 SECURE_SSL_REDIRECT = env_bool("DJANGO_SECURE_SSL_REDIRECT", not DEBUG)
 SESSION_COOKIE_SECURE = env_bool("DJANGO_SESSION_COOKIE_SECURE", not DEBUG)

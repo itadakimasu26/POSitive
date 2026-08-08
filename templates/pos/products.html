@@ -1,15 +1,23 @@
 {% extends 'pos/base.html' %}
 {% block title %}Products — POSitive!{% endblock %}
 {% block section %}Inventory{% endblock %}
-{% block page_title %}Products & stock{% endblock %}
+{% block page_title %}Products &amp; stock{% endblock %}
 {% block content %}
 <div class="stack">
-    <section class="section-title product-title"><div><span class="eyebrow">{{ store.get_store_type_display }}</span><h2>Products & inventory</h2><p>Keep prices, categories, and stock levels accurate.</p></div><div><a class="secondary" href="{% url 'export_products' %}">⇩ Export CSV</a>{% if store.is_pro %}<button class="secondary" data-modal-open="importModal">Import CSV</button>{% endif %}<button class="secondary" data-modal-open="categoryModal">+ Add category</button><button class="primary" data-modal-open="productModal">＋ Add product</button></div></section>
+    <section class="section-title product-title"><div><span class="eyebrow">{{ store.get_store_type_display }}</span><h2>Products &amp; inventory</h2><p>Keep prices, pictures, categories, and stock levels accurate.</p></div><div><a class="secondary" href="{% url 'export_products' %}">⇩ Export CSV</a>{% if store.is_pro %}<button class="secondary" data-modal-open="importModal">Import CSV</button>{% endif %}<button class="secondary" data-modal-open="categoryModal">+ Add category</button><button class="primary" data-modal-open="productModal">＋ Add product</button></div></section>
     <section class="stat-grid mini-stats"><article class="stat-card"><p>Total products</p><strong>{{ products|length }}</strong><small>Current filtered catalog</small></article><article class="stat-card"><p>Inventory value</p><strong>₱{{ inventory_value|floatformat:2 }}</strong><small>At selling price</small></article><article class="stat-card"><p>Low stock</p><strong>{{ low_count }}</strong><small class="attention">Reorder soon</small></article></section>
     <section class="card table-card">
         <div class="table-toolbar"><form class="search-box compact-search" method="get">⌕<input name="q" value="{{ query }}" placeholder="Search products" aria-label="Search inventory"></form><span class="table-note">Use +/− for quick stock adjustments</span></div>
-        <div class="responsive-table"><table><thead><tr><th>Product</th><th>Barcode</th><th>Category</th><th>Stock</th><th>Price</th><th>Status</th><th>Quick adjust</th></tr></thead><tbody>
-            {% for product in products %}<tr><td><span class="table-art {{ product.color_class }}">{{ product.emoji }}</span><strong>{{ product.name }}</strong></td><td><code>{{ product.barcode }}</code></td><td>{{ product.category }}</td><td>{{ product.stock }}</td><td>₱{{ product.price|floatformat:2 }}</td><td><span class="status {% if product.is_low_stock %}low{% else %}good{% endif %}">{% if product.is_low_stock %}Low stock{% else %}In stock{% endif %}</span></td><td><div class="table-stepper"><form method="post" action="{% url 'adjust_stock' product.pk %}">{% csrf_token %}<input type="hidden" name="amount" value="-1"><button aria-label="Remove one {{ product.name }}">−</button></form><span>{{ product.stock }}</span><form method="post" action="{% url 'adjust_stock' product.pk %}">{% csrf_token %}<input type="hidden" name="amount" value="1"><button aria-label="Add one {{ product.name }}">＋</button></form></div></td></tr>{% empty %}<tr><td colspan="7" class="empty-table">No products match your search.</td></tr>{% endfor %}
+        <div class="responsive-table"><table><thead><tr><th>Product</th><th>Barcode</th><th>Category</th><th>Stock</th><th>Price</th><th>Status</th><th>Quick adjust</th><th>Picture</th></tr></thead><tbody>
+            {% for product in products %}
+            <tr>
+                <td><img class="table-art product-thumb" src="{% if product.picture_url %}{{ product.picture_url }}{% else %}{% url 'product_placeholder' product.pk %}{% endif %}" alt="{{ product.name }}" loading="lazy" referrerpolicy="no-referrer" onerror="this.onerror=null;this.src='{% url 'product_placeholder' product.pk %}'"><strong>{{ product.name }}</strong></td>
+                <td><code>{{ product.barcode }}</code></td><td>{{ product.category }}</td><td>{{ product.stock }}</td><td>₱{{ product.price|floatformat:2 }}</td>
+                <td><span class="status {% if product.is_low_stock %}low{% else %}good{% endif %}">{% if product.is_low_stock %}Low stock{% else %}In stock{% endif %}</span></td>
+                <td><div class="table-stepper"><form method="post" action="{% url 'adjust_stock' product.pk %}">{% csrf_token %}<input type="hidden" name="amount" value="-1"><button aria-label="Remove one {{ product.name }}">−</button></form><span>{{ product.stock }}</span><form method="post" action="{% url 'adjust_stock' product.pk %}">{% csrf_token %}<input type="hidden" name="amount" value="1"><button aria-label="Add one {{ product.name }}">＋</button></form></div></td>
+                <td><button type="button" class="secondary picture-edit" data-modal-open="pictureModal" data-picture-name="{{ product.name }}" data-picture-url="{{ product.picture_url }}" data-picture-placeholder="{% url 'product_placeholder' product.pk %}" data-picture-action="{% url 'edit_product_picture' product.pk %}">Edit picture</button></td>
+            </tr>
+            {% empty %}<tr><td colspan="8" class="empty-table">No products match your search.</td></tr>{% endfor %}
         </tbody></table></div>
     </section>
 </div>
@@ -32,8 +40,41 @@
         <div class="form-row"><label>Category{{ form.category }}{{ form.category.errors }}<small>{{ form.category.help_text }}</small></label><label>Barcode{{ form.barcode }}{{ form.barcode.errors }}</label></div>
         <div class="form-row"><label>Unit cost{{ form.cost }}{{ form.cost.errors }}</label><label>Selling price{{ form.price }}{{ form.price.errors }}</label></div>
         <div class="form-row"><label>Opening stock{{ form.stock }}{{ form.stock.errors }}</label><label>Low-stock level{{ form.low_stock_threshold }}{{ form.low_stock_threshold.errors }}</label></div>
+        <label>Product picture URL (optional){{ form.picture_url }}{{ form.picture_url.errors }}<small>Leave blank and POSitive! will create a temporary picture based on the product name.</small></label>
         <div class="modal-actions"><button type="button" class="secondary" data-modal-close>Cancel</button><button class="primary">Add product</button></div>
     </form>
 </div>
+
+<div class="modal-backdrop" id="pictureModal" aria-hidden="true">
+    <form class="modal" method="post" id="pictureForm">{% csrf_token %}<div class="modal-head"><div><span class="eyebrow">Product image</span><h2 id="pictureTitle">Edit product picture</h2></div><button type="button" data-modal-close aria-label="Close">×</button></div>
+        <img class="picture-preview" id="picturePreview" src="" alt="Product picture preview" referrerpolicy="no-referrer">
+        <label>Hosted picture URL<input type="url" name="picture_url" id="pictureUrl" maxlength="500" placeholder="https://example.com/product-photo.jpg"></label>
+        <p class="modal-note">Paste an http:// or https:// image URL. Clear the field to restore the automatic name-based placeholder.</p>
+        <div class="modal-actions"><button type="button" class="secondary" data-modal-close>Cancel</button><button class="primary">Save picture</button></div>
+    </form>
+</div>
 {% if form.errors %}<script>window.addEventListener('DOMContentLoaded',()=>window.POSitive.openModal('productModal'));</script>{% endif %}
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+    const form = document.getElementById("pictureForm");
+    const input = document.getElementById("pictureUrl");
+    const preview = document.getElementById("picturePreview");
+    let placeholder = "";
+    document.querySelectorAll("[data-picture-action]").forEach(function (button) {
+        button.addEventListener("click", function () {
+            form.action = button.dataset.pictureAction;
+            input.value = button.dataset.pictureUrl || "";
+            placeholder = button.dataset.picturePlaceholder;
+            preview.src = input.value || placeholder;
+            preview.onerror = function () { preview.onerror = null; preview.src = placeholder; };
+            document.getElementById("pictureTitle").textContent = "Picture for " + button.dataset.pictureName;
+        });
+    });
+    input.addEventListener("input", function () {
+        preview.src = input.value.trim() || placeholder;
+    });
+})();
+</script>
 {% endblock %}

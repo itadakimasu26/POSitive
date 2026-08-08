@@ -117,28 +117,5 @@
 
   if (window.location.hash === "#new-product") openModal("productModal");
 
-  const subscriptionForm = document.getElementById("subscriptionPaymentForm");
-  if (subscriptionForm) {
-    const planSelect = subscriptionForm.querySelector("[name='plan']");
-    const methodSelect = subscriptionForm.querySelector("[name='payment_method']");
-    const amount = document.getElementById("subscriptionAmount");
-    const prices = { Starter: 399, Pro: 799 };
-    const updateSubscriptionPayment = function () {
-      const selectedMethod = methodSelect?.value;
-      document.querySelectorAll("[data-payment-panel]").forEach(function (panel) {
-        panel.hidden = panel.dataset.paymentPanel !== selectedMethod;
-      });
-      if (amount && planSelect) {
-        amount.textContent = new Intl.NumberFormat("en-PH", {
-          style: "currency",
-          currency: "PHP",
-        }).format(prices[planSelect.value] || 0);
-      }
-    };
-    planSelect?.addEventListener("change", updateSubscriptionPayment);
-    methodSelect?.addEventListener("change", updateSubscriptionPayment);
-    updateSubscriptionPayment();
-  }
-
   window.POSitive = { openModal: openModal };
 })();

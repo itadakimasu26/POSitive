@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django import forms
 from django.contrib import admin
 from django.contrib.auth import get_user_model
@@ -25,11 +27,9 @@ from .models import (
     StoreAuditEvent,
     StoreMembership,
     StoreSettings,
-    SubscriptionRequest,
     Supplier,
     UserSecurityProfile,
 )
-from .subscriptions import activate_subscription, reject_subscription
 
 
 User = get_user_model()
@@ -47,12 +47,49 @@ class DemoRequestAdmin(admin.ModelAdmin):
         return False
 
 
+class ExistingProAdministratorChoiceField(forms.ModelChoiceField):
+    def label_from_instance(self, user):
+        store_names = list(
+            user.store_memberships.filter(
+                active=True,
+                role=StoreMembership.Role.ADMINISTRATOR,
+                store__active_plan="Pro",
+            ).values_list("store__business_name", flat=True)
+        )
+        stores = ", ".join(store_names) or "Pro administrator"
+        email = user.email or "no email"
+        return f"{user.username} — {email} — {stores}"
+
+
 class PlatformStoreForm(forms.ModelForm):
+    """Create or edit a store together with its administrator assignment.
+
+    A new/single-store administrator can be entered as credentials. For Pro
+    branches, the explicit selector reuses an administrator already assigned
+    to another Pro store without changing that account's credentials.
+    """
+    service_charge_rate = forms.DecimalField(
+        label="Dine-in service charge (%)",
+        required=False,
+        initial=Decimal("0.00"),
+        min_value=Decimal("0.00"),
+        max_value=Decimal("100.00"),
+        decimal_places=2,
+        max_digits=5,
+        help_text="Cafe stores only. Applied to dine-in orders; take-out orders are not charged.",
+    )
+    existing_administrator = ExistingProAdministratorChoiceField(
+        label="Assign an existing Pro administrator",
+        queryset=User.objects.none(),
+        required=False,
+        help_text="Pro only. Select an administrator who already manages a Pro store to give the same login access to this store.",
+    )
     admin_username = forms.CharField(
-        label="Store administrator username",
+        label="New or single-store administrator username",
         max_length=150,
+        required=False,
         validators=User._meta.get_field("username").validators,
-        help_text="Enter an existing username or issue a new administrator login. Pro permits up to three administrators per store.",
+        help_text="Use this when creating a new login or assigning an account to its first store.",
     )
     admin_email = forms.EmailField(
         label="Store administrator email",
@@ -81,6 +118,14 @@ class PlatformStoreForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.administrator_user = None
+        self.selected_existing_administrator = None
+        self.fields["existing_administrator"].queryset = User.objects.filter(
+            is_active=True,
+            is_superuser=False,
+            store_memberships__active=True,
+            store_memberships__role=StoreMembership.Role.ADMINISTRATOR,
+            store_memberships__store__active_plan="Pro",
+        ).distinct().order_by("username")
         if self.instance.pk:
             membership = self.instance.memberships.filter(
                 role=StoreMembership.Role.ADMINISTRATOR,
@@ -96,16 +141,64 @@ class PlatformStoreForm(forms.ModelForm):
             raise ValidationError("A store with this ID already exists.")
         return store_id
 
+    def clean_service_charge_rate(self):
+        return self.cleaned_data.get("service_charge_rate") or Decimal("0.00")
+
     def clean(self):
+        """Validate credentials, seat limits, and the all-Pro sharing rule."""
         cleaned_data = super().clean()
+        store_type = cleaned_data.get("store_type", self.instance.store_type)
+        if store_type != StoreSettings.StoreType.CAFE and cleaned_data.get("service_charge_rate"):
+            self.add_error(
+                "service_charge_rate",
+                "Dine-in service charges are available only for Cafe stores.",
+            )
+        plan = cleaned_data.get("active_plan", self.instance.active_plan)
+        selected_administrator = cleaned_data.get("existing_administrator")
         username = cleaned_data.get("admin_username", "").strip()
         password = cleaned_data.get("admin_password")
         password_confirm = cleaned_data.get("admin_password_confirm")
         email = cleaned_data.get("admin_email", "").strip()
-        if not username:
+
+        if selected_administrator:
+            self.selected_existing_administrator = selected_administrator
+            self.administrator_user = selected_administrator
+            cleaned_data["admin_username"] = selected_administrator.username
+            cleaned_data["admin_email"] = selected_administrator.email
+            if plan != "Pro":
+                self.add_error(
+                    "existing_administrator",
+                    "Existing multi-store administrators can only be assigned to Pro stores.",
+                )
+            other_assignments = selected_administrator.store_memberships.filter(active=True)
+            if self.instance.pk:
+                other_assignments = other_assignments.exclude(store_id=self.instance.pk)
+            if other_assignments.exclude(store__active_plan="Pro").exists():
+                self.add_error(
+                    "existing_administrator",
+                    "This account is assigned to a non-Pro store and cannot receive multi-store access.",
+                )
+            if password or password_confirm:
+                self.add_error(
+                    "admin_password",
+                    "Do not change credentials when assigning an existing Pro administrator.",
+                )
+        elif not username:
+            self.add_error(
+                "admin_username",
+                "Enter an administrator username or select an existing Pro administrator.",
+            )
             return cleaned_data
 
-        self.administrator_user = User.objects.filter(username__iexact=username).first()
+        if selected_administrator:
+            password = ""
+            password_confirm = ""
+            email = selected_administrator.email
+        if not username:
+            username = selected_administrator.username
+
+        if not selected_administrator:
+            self.administrator_user = User.objects.filter(username__iexact=username).first()
         email_users = User.objects.filter(email__iexact=email) if email else User.objects.none()
         if self.administrator_user:
             email_users = email_users.exclude(pk=self.administrator_user.pk)
@@ -124,6 +217,17 @@ class PlatformStoreForm(forms.ModelForm):
                     validate_password(password, user=self.administrator_user)
                 except ValidationError as exc:
                     self.add_error("admin_password", exc)
+            other_assignments = self.administrator_user.store_memberships.filter(active=True)
+            if self.instance.pk:
+                other_assignments = other_assignments.exclude(store_id=self.instance.pk)
+            if other_assignments.exists() and (
+                plan != "Pro"
+                or other_assignments.exclude(store__active_plan="Pro").exists()
+            ):
+                self.add_error(
+                    "admin_username",
+                    "Multiple-store access requires the Pro plan on every assigned store.",
+                )
         else:
             if not email:
                 self.add_error("admin_email", "An email address is required for a new administrator.")
@@ -137,7 +241,6 @@ class PlatformStoreForm(forms.ModelForm):
                     self.add_error("admin_password", exc)
         if password != password_confirm:
             self.add_error("admin_password_confirm", "The temporary passwords do not match.")
-        plan = cleaned_data.get("active_plan", self.instance.active_plan)
         admin_limit = StoreSettings.ADMIN_LIMITS.get(plan, 1)
         if self.instance.pk and self.administrator_user:
             already_assigned = self.instance.memberships.filter(
@@ -155,7 +258,7 @@ class PlatformStoreForm(forms.ModelForm):
 
     def save_administrator(self, store):
         user = self.administrator_user
-        password = self.cleaned_data.get("admin_password")
+        password = "" if self.selected_existing_administrator else self.cleaned_data.get("admin_password")
         email = self.cleaned_data.get("admin_email", "").strip()
         if user is None:
             user = User.objects.create_user(
@@ -216,9 +319,9 @@ class StoreAdmin(admin.ModelAdmin):
     search_fields = ("business_name", "store_id", "memberships__user__username", "memberships__user__email")
     readonly_fields = ("subscription_state", "staff_usage", "created_at", "updated_at")
     fieldsets = (
-        ("Business", {"fields": ("business_name", "store_id", "store_type", "contact_number", "address", "tax_rate"), "description": "Choose the store type to automatically prepare a focused product-category list."}),
-        ("Subscription", {"fields": ("active_plan", "status", "subscription_start", "subscription_end", "subscription_state", "staff_usage")}),
-        ("Store administrator", {"fields": ("admin_username", "admin_email", "admin_password", "admin_password_confirm"), "description": "On Pro, save another username here to add a second or third administrator without removing current administrators."}),
+        ("Business", {"fields": ("business_name", "store_id", "store_type", "contact_number", "address", "tax_rate", "service_charge_rate"), "description": "Choose the store type to prepare product categories. Dine-in, take-out, and service charges are available only for Cafe stores."}),
+        ("Subscription", {"fields": ("active_plan", "status", "subscription_start", "subscription_end", "subscription_state", "staff_usage"), "description": "Trial and Starter are single-store plans. Pro enables shared administrator accounts, the owner super dashboard, and advanced store operations."}),
+        ("Store administrator", {"fields": ("existing_administrator", "admin_username", "admin_email", "admin_password", "admin_password_confirm"), "description": "For a Pro branch, select an existing Pro administrator to share one login across stores. Otherwise create or assign the store's first administrator below."}),
         ("Preferences", {"fields": ("receipt_after_sale", "low_stock_alerts", "barcode_scanning")}),
         ("Audit", {"fields": ("created_at", "updated_at"), "classes": ("collapse",)}),
     )
@@ -258,7 +361,7 @@ class StoreMembershipAdmin(admin.ModelAdmin):
 
 @admin.register(Product, site=platform_admin_site)
 class ProductAdmin(admin.ModelAdmin):
-    list_display = ("name", "store", "category", "barcode", "stock", "price", "active")
+    list_display = ("name", "store", "category", "barcode", "stock", "price", "picture_url", "active")
     list_filter = ("store", "category", "active")
     search_fields = ("name", "barcode", "store__business_name", "store__store_id")
     autocomplete_fields = ("store",)
@@ -274,48 +377,11 @@ class ProductCategoryAdmin(admin.ModelAdmin):
 
 @admin.register(Sale, site=platform_admin_site)
 class SaleAdmin(admin.ModelAdmin):
-    list_display = ("receipt_number", "store", "created_at", "user", "source", "payment_method", "total")
-    list_filter = ("store", "source", "payment_method", "created_at")
+    list_display = ("receipt_number", "store", "created_at", "user", "order_type", "source", "payment_method", "service_charge", "total")
+    list_filter = ("store", "order_type", "source", "payment_method", "created_at")
     search_fields = ("receipt_number", "external_order_id", "user__username", "store__business_name", "store__store_id")
     autocomplete_fields = ("store", "user")
     inlines = [SaleItemInline]
-
-
-@admin.register(SubscriptionRequest, site=platform_admin_site)
-class SubscriptionRequestAdmin(admin.ModelAdmin):
-    list_display = ("store", "plan", "amount", "requested_by", "payment_method", "payment_reference", "status", "created_at")
-    list_filter = ("store", "plan", "status", "payment_method")
-    search_fields = ("store__business_name", "store__store_id", "requested_by__username", "payer_name", "payment_reference", "contact_details")
-    readonly_fields = (
-        "store", "plan", "amount", "requested_by", "payment_method", "payer_name",
-        "payment_reference", "contact_details", "message", "status", "provider_reference",
-        "provider_payment_id", "provider_checkout_url", "reviewed_by", "reviewed_at",
-        "activated_at", "created_at",
-    )
-    actions = ("approve_and_activate", "reject_payment")
-
-    @admin.action(description="Approve payment and activate subscription")
-    def approve_and_activate(self, request, queryset):
-        activated = 0
-        skipped = 0
-        for subscription_request in queryset:
-            _, changed = activate_subscription(subscription_request.pk, reviewed_by=request.user)
-            activated += int(changed)
-            skipped += int(not changed)
-        self.message_user(request, f"Activated {activated} subscription(s); skipped {skipped} already activated request(s).")
-
-    @admin.action(description="Reject selected unactivated payments")
-    def reject_payment(self, request, queryset):
-        rejected = 0
-        skipped = 0
-        for subscription_request in queryset:
-            _, changed = reject_subscription(subscription_request.pk, reviewed_by=request.user)
-            rejected += int(changed)
-            skipped += int(not changed)
-        self.message_user(request, f"Rejected {rejected} request(s); skipped {skipped} activated request(s).")
-
-    def has_add_permission(self, request):
-        return False
 
 
 @admin.register(Customer, site=platform_admin_site)

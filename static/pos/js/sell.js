@@ -2,6 +2,8 @@
   const shell = document.querySelector(".sell-layout");
   if (!shell) return;
   const taxRate = Number(shell.dataset.taxRate || 0);
+  const serviceChargeRate = Number(shell.dataset.serviceChargeRate || 0);
+  const supportsDining = shell.dataset.supportsDining === "true";
   const barcodeScanning = shell.dataset.barcodeScanning === "true";
   const proEnabled = shell.dataset.pro === "true";
   const cart = new Map();
@@ -10,6 +12,7 @@
   const cartLines = document.getElementById("cartLines");
   const cartJson = document.getElementById("cartJson");
   const paymentMethod = document.getElementById("paymentMethod");
+  const orderType = document.getElementById("orderType");
   const checkoutButton = document.getElementById("checkoutButton");
   const checkoutForm = document.getElementById("checkoutForm");
   const productSearch = document.getElementById("productSearch");
@@ -19,7 +22,15 @@
   const money = new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" });
 
   function readProduct(button) {
-    return { id: Number(button.dataset.id), name: button.dataset.name, price: Number(button.dataset.price), stock: Number(button.dataset.stock), emoji: button.dataset.emoji, color: button.dataset.color };
+    return {
+      id: Number(button.dataset.id),
+      name: button.dataset.name,
+      price: Number(button.dataset.price),
+      stock: Number(button.dataset.stock),
+      picture: button.dataset.picture,
+      placeholder: button.dataset.placeholder,
+      color: button.dataset.color,
+    };
   }
 
   function totals() {
@@ -32,8 +43,15 @@
     const requestedPoints = Math.max(0, Number(loyaltyPointsInput?.value || 0));
     const loyalty = Math.min(availablePoints, requestedPoints, Math.max(0, subtotal - discount));
     const taxable = Math.max(0, subtotal - discount - loyalty);
-    const tax = taxable * taxRate / 100;
-    return { subtotal, discount, loyalty, tax, total: taxable + tax };
+    const serviceCharge = supportsDining && orderType.value === "Dine-in" ? taxable * serviceChargeRate / 100 : 0;
+    const tax = (taxable + serviceCharge) * taxRate / 100;
+    return { subtotal, discount, loyalty, serviceCharge, tax, total: taxable + serviceCharge + tax };
+  }
+
+  function escapeHtml(value) {
+    const node = document.createElement("span");
+    node.textContent = value;
+    return node.innerHTML;
   }
 
   function render() {
@@ -42,8 +60,13 @@
       cartLines.innerHTML = '<div class="empty-state"><span>🛒</span><strong>Your cart is empty</strong><p>Tap a product to begin a sale.</p></div>';
     } else {
       cartLines.innerHTML = items.map(function (item) {
-        return '<div class="cart-line"><span class="cart-art ' + item.color + '">' + item.emoji + '</span><div><strong>' + escapeHtml(item.name) + '</strong><small>' + money.format(item.price) + '</small><div class="stepper"><button type="button" data-qty="-1" data-id="' + item.id + '">−</button><span>' + item.qty + '</span><button type="button" data-qty="1" data-id="' + item.id + '">＋</button></div></div><b>' + money.format(item.price * item.qty) + '</b></div>';
+        return '<div class="cart-line"><img class="cart-art" src="' + escapeHtml(item.picture) + '" data-fallback="' + escapeHtml(item.placeholder) + '" alt=""><div><strong>' + escapeHtml(item.name) + '</strong><small>' + money.format(item.price) + '</small><div class="stepper"><button type="button" data-qty="-1" data-id="' + item.id + '">−</button><span>' + item.qty + '</span><button type="button" data-qty="1" data-id="' + item.id + '">＋</button></div></div><b>' + money.format(item.price * item.qty) + '</b></div>';
       }).join("");
+      cartLines.querySelectorAll("img[data-fallback]").forEach(function (image) {
+        image.addEventListener("error", function () {
+          if (image.src !== image.dataset.fallback) image.src = image.dataset.fallback;
+        }, { once: true });
+      });
     }
     const value = totals();
     document.getElementById("subtotal").textContent = money.format(value.subtotal);
@@ -53,17 +76,15 @@
       document.getElementById("discountSummary").hidden = value.discount <= 0;
       document.getElementById("loyaltySummary").hidden = value.loyalty <= 0;
     }
+    const serviceChargeValue = document.getElementById("serviceCharge");
+    const serviceChargeSummary = document.getElementById("serviceChargeSummary");
+    if (serviceChargeValue) serviceChargeValue.textContent = money.format(value.serviceCharge);
+    if (serviceChargeSummary) serviceChargeSummary.hidden = orderType.value !== "Dine-in" || serviceChargeRate <= 0;
     document.getElementById("tax").textContent = money.format(value.tax);
     document.getElementById("total").textContent = money.format(value.total);
     checkoutButton.querySelector("span").textContent = "Charge " + money.format(value.total);
     checkoutButton.disabled = !items.length;
     cartJson.value = JSON.stringify(items.map(function (item) { return { id: item.id, qty: item.qty }; }));
-  }
-
-  function escapeHtml(value) {
-    const node = document.createElement("span");
-    node.textContent = value;
-    return node.innerHTML;
   }
 
   function addProduct(button) {
@@ -98,6 +119,14 @@
     loyaltyPointsInput.max = String(points);
     if (!customerSelect.value) loyaltyPointsInput.value = "0";
     render();
+  });
+  document.querySelectorAll("[data-order-type]").forEach(function (button) {
+    button.addEventListener("click", function () {
+      document.querySelectorAll("[data-order-type]").forEach(function (item) { item.classList.remove("active"); });
+      button.classList.add("active");
+      orderType.value = button.dataset.orderType;
+      render();
+    });
   });
   document.querySelectorAll("[data-payment]").forEach(function (button) {
     button.addEventListener("click", function () {

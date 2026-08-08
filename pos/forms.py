@@ -1,5 +1,6 @@
 import uuid
 from datetime import timedelta
+from decimal import Decimal
 
 from django import forms
 from django.contrib.auth import get_user_model
@@ -18,7 +19,6 @@ from .models import (
     ReportSchedule,
     StoreMembership,
     StoreSettings,
-    SubscriptionRequest,
     Supplier,
     UserSecurityProfile,
 )
@@ -70,6 +70,17 @@ class TrialSignupForm(forms.Form):
         label="Type of store",
         choices=StoreSettings.StoreType.choices,
         help_text="We will prepare the most useful product categories for your business.",
+    )
+    service_charge_rate = forms.DecimalField(
+        label="Dine-in service charge (%)",
+        required=False,
+        initial=Decimal("0.00"),
+        min_value=Decimal("0.00"),
+        max_value=Decimal("100.00"),
+        decimal_places=2,
+        max_digits=5,
+        help_text="Cafe stores only. Applied to dine-in orders; take-out orders are not charged.",
+        widget=forms.NumberInput(attrs={"min": 0, "max": 100, "step": "0.01"}),
     )
     first_name = forms.CharField(max_length=150, widget=forms.TextInput(attrs={"autocomplete": "given-name"}))
     last_name = forms.CharField(max_length=150, widget=forms.TextInput(attrs={"autocomplete": "family-name"}))
@@ -125,6 +136,14 @@ class TrialSignupForm(forms.Form):
                 validate_password(password1, user=provisional_user)
             except ValidationError as exc:
                 self.add_error("password1", exc)
+        if (
+            cleaned_data.get("store_type") != StoreSettings.StoreType.CAFE
+            and cleaned_data.get("service_charge_rate")
+        ):
+            self.add_error(
+                "service_charge_rate",
+                "Dine-in service charges are available only for Cafe stores.",
+            )
         return cleaned_data
 
     @transaction.atomic
@@ -145,6 +164,7 @@ class TrialSignupForm(forms.Form):
             business_name=self.cleaned_data["business_name"],
             store_id=store_id,
             store_type=self.cleaned_data["store_type"],
+            service_charge_rate=self.cleaned_data.get("service_charge_rate") or Decimal("0.00"),
             active_plan="Trial",
             status="Active",
             subscription_start=today,
@@ -163,7 +183,7 @@ class ProductForm(forms.ModelForm):
 
     class Meta:
         model = Product
-        fields = ["name", "category", "barcode", "cost", "price", "stock", "low_stock_threshold"]
+        fields = ["name", "category", "barcode", "cost", "price", "stock", "low_stock_threshold", "picture_url"]
         widgets = {
             "name": forms.TextInput(attrs={"placeholder": "e.g. Matcha latte"}),
             "barcode": forms.TextInput(attrs={"placeholder": "Leave blank to auto-generate"}),
@@ -171,6 +191,7 @@ class ProductForm(forms.ModelForm):
             "price": forms.NumberInput(attrs={"min": 0, "step": "0.01"}),
             "stock": forms.NumberInput(attrs={"min": 0}),
             "low_stock_threshold": forms.NumberInput(attrs={"min": 0}),
+            "picture_url": forms.URLInput(attrs={"placeholder": "https://example.com/product-photo.jpg"}),
         }
 
     def __init__(self, *args, store, **kwargs):
@@ -200,6 +221,29 @@ class ProductForm(forms.ModelForm):
         if barcode and Product.objects.filter(store=self.store, barcode__iexact=barcode).exclude(pk=self.instance.pk).exists():
             raise ValidationError("This barcode is already used by another product in this store.")
         return barcode
+
+    def clean_picture_url(self):
+        picture_url = self.cleaned_data.get("picture_url", "").strip()
+        if picture_url and not picture_url.lower().startswith(("https://", "http://")):
+            raise ValidationError("Use an http:// or https:// image URL.")
+        return picture_url
+
+
+class ProductPictureForm(forms.ModelForm):
+    class Meta:
+        model = Product
+        fields = ["picture_url"]
+        widgets = {
+            "picture_url": forms.URLInput(
+                attrs={"placeholder": "https://example.com/product-photo.jpg", "autocomplete": "url"}
+            ),
+        }
+
+    def clean_picture_url(self):
+        picture_url = self.cleaned_data.get("picture_url", "").strip()
+        if picture_url and not picture_url.lower().startswith(("https://", "http://")):
+            raise ValidationError("Use an http:// or https:// image URL.")
+        return picture_url
 
 
 class ProductCategoryForm(forms.ModelForm):
@@ -469,38 +513,6 @@ class ReportScheduleForm(forms.ModelForm):
         if ReportSchedule.objects.filter(store=self.store, recipient_email__iexact=email).exists():
             raise ValidationError("This email already receives a scheduled report for the store.")
         return email
-
-
-class SubscriptionRequestForm(forms.ModelForm):
-    class Meta:
-        model = SubscriptionRequest
-        fields = ["plan", "payment_method", "payer_name", "payment_reference", "contact_details", "message"]
-        widgets = {
-            "payer_name": forms.TextInput(attrs={"placeholder": "Name used for the payment"}),
-            "payment_reference": forms.TextInput(attrs={"placeholder": "Required for bank transfers"}),
-            "contact_details": forms.TextInput(attrs={"placeholder": "Email or mobile number"}),
-            "message": forms.Textarea(attrs={"rows": 3, "placeholder": "Optional payment notes"}),
-        }
-
-    def __init__(self, *args, maya_enabled=False, **kwargs):
-        super().__init__(*args, **kwargs)
-        choices = [
-            choice
-            for choice in SubscriptionRequest.PaymentMethod.choices
-            if maya_enabled or choice[0] != SubscriptionRequest.PaymentMethod.MAYA
-        ]
-        self.fields["payment_method"].choices = choices
-
-    def clean(self):
-        cleaned_data = super().clean()
-        method = cleaned_data.get("payment_method")
-        reference = cleaned_data.get("payment_reference", "").strip()
-        contact = cleaned_data.get("contact_details", "").strip()
-        if method == SubscriptionRequest.PaymentMethod.BANK_TRANSFER and not reference:
-            self.add_error("payment_reference", "Enter the Landbank or InstaPay transaction reference.")
-        if method == SubscriptionRequest.PaymentMethod.CASH and not contact:
-            self.add_error("contact_details", "Enter an email address or mobile number so the payment can be coordinated.")
-        return cleaned_data
 
 
 class ProductCSVImportForm(forms.Form):

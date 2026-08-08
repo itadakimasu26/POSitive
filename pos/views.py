@@ -5,6 +5,7 @@ import re
 import uuid
 from datetime import date, datetime, timedelta
 from decimal import Decimal
+from html import escape
 from io import TextIOWrapper
 
 from django.conf import settings as django_settings
@@ -14,14 +15,13 @@ from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import IntegrityError, transaction
 from django.db.models import Count, DecimalField, ExpressionWrapper, F, Q, Sum
-from django.http import FileResponse, Http404, HttpResponse, JsonResponse
+from django.http import FileResponse, Http404, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_http_methods, require_POST
-from django.views.decorators.csrf import csrf_exempt
 
 from .forms import (
     CashRegisterCloseForm,
@@ -32,13 +32,13 @@ from .forms import (
     ProductCSVImportForm,
     ProductCategoryForm,
     ProductForm,
+    ProductPictureForm,
     PurchaseOrderForm,
     PurchaseOrderItemFormSet,
     ReportScheduleForm,
     StocktakeForm,
     StockTransferForm,
     StoreTeamMemberForm,
-    SubscriptionRequestForm,
     SupplierForm,
     TrialSignupForm,
 )
@@ -59,11 +59,9 @@ from .models import (
     StoreAuditEvent,
     StoreMembership,
     StoreSettings,
-    SubscriptionRequest,
     Supplier,
 )
 from .registers import assign_open_register
-from .maya import MayaCheckoutError, create_checkout, reconcile_payment
 from .tenancy import CURRENT_STORE_SESSION_KEY, load_store_access, store_required
 
 
@@ -183,9 +181,9 @@ def marketing_home(request):
         "pos/marketing_home.html",
         {
             "demo_form": form,
-            "payment_contact_email": django_settings.PAYMENT_CONTACT_EMAIL,
-            "payment_contact_messenger": django_settings.PAYMENT_CONTACT_MESSENGER,
-            "payment_contact_phone": django_settings.PAYMENT_CONTACT_PHONE,
+            "support_contact_email": django_settings.SUPPORT_CONTACT_EMAIL,
+            "support_contact_messenger": django_settings.SUPPORT_CONTACT_MESSENGER,
+            "support_contact_phone": django_settings.SUPPORT_CONTACT_PHONE,
         },
     )
 
@@ -206,9 +204,9 @@ def public_document(request, document):
         {
             "document_title": title,
             "document": template_key,
-            "payment_contact_email": django_settings.PAYMENT_CONTACT_EMAIL,
-            "payment_contact_messenger": django_settings.PAYMENT_CONTACT_MESSENGER,
-            "payment_contact_phone": django_settings.PAYMENT_CONTACT_PHONE,
+            "support_contact_email": django_settings.SUPPORT_CONTACT_EMAIL,
+            "support_contact_messenger": django_settings.SUPPORT_CONTACT_MESSENGER,
+            "support_contact_phone": django_settings.SUPPORT_CONTACT_PHONE,
         },
     )
 
@@ -301,6 +299,13 @@ def sell(request):
         ).first()
         if open_register:
             register_activity = open_register.activities.filter(ended_at__isnull=True).select_related("user").first()
+    last_completed_sale = None
+    last_completed_sale_id = request.session.pop("last_completed_sale_id", None)
+    if last_completed_sale_id:
+        last_completed_sale = Sale.objects.filter(
+            pk=last_completed_sale_id,
+            store=request.store,
+        ).first()
     return render(
         request,
         "pos/sell.html",
@@ -311,6 +316,7 @@ def sell(request):
             "open_register": open_register,
             "register_activity": register_activity,
             "register_ready": bool(register_activity and register_activity.user_id == request.user.pk),
+            "last_completed_sale": last_completed_sale,
             "offline_import_form": OfflineSalesCSVImportForm(),
         },
     )
@@ -526,6 +532,11 @@ def import_offline_sales(request):
                     store=request.store,
                     user=request.user,
                     payment_method=group["payment"],
+                    order_type=(
+                        Sale.OrderType.TAKE_OUT
+                        if request.store.supports_dining
+                        else Sale.OrderType.RETAIL
+                    ),
                     subtotal=group["subtotal"],
                     tax=group["tax"],
                     total=group["total"],
@@ -590,6 +601,14 @@ def complete_sale(request):
     payment = request.POST.get("payment_method", "Cash")
     if payment not in dict(Sale.PAYMENT_CHOICES):
         payment = "Cash"
+    store = request.store
+    if store.supports_dining:
+        order_type = request.POST.get("order_type", Sale.OrderType.TAKE_OUT)
+        if order_type not in {Sale.OrderType.DINE_IN, Sale.OrderType.TAKE_OUT}:
+            order_type = Sale.OrderType.TAKE_OUT
+    else:
+        # Never trust a hidden/crafted dining value for a retail category.
+        order_type = Sale.OrderType.RETAIL
 
     try:
         try:
@@ -601,7 +620,6 @@ def complete_sale(request):
             raise SaleInputError("Discounts must be between 0% and 50%.")
         if loyalty_points < 0:
             raise SaleInputError("Loyalty points cannot be negative.")
-        store = request.store
         if not store.is_pro and (discount_rate or loyalty_points or request.POST.get("customer_id")):
             raise SaleInputError("Customers, loyalty, and discounts require the Pro plan.")
         if store.is_pro and payment == "Cash" and not CashRegisterSession.objects.filter(
@@ -656,8 +674,18 @@ def complete_sale(request):
             after_discount = max(Decimal("0.00"), subtotal - discount)
             loyalty_discount = min(Decimal(loyalty_points), after_discount)
             taxable_total = after_discount - loyalty_discount
-            tax = (taxable_total * store.tax_rate / Decimal("100")).quantize(Decimal("0.01"))
-            total = taxable_total + tax
+            service_charge_rate = (
+                store.service_charge_rate
+                if store.supports_dining and order_type == Sale.OrderType.DINE_IN
+                else Decimal("0.00")
+            )
+            service_charge = (
+                taxable_total * service_charge_rate / Decimal("100")
+            ).quantize(Decimal("0.01"))
+            tax = (
+                (taxable_total + service_charge) * store.tax_rate / Decimal("100")
+            ).quantize(Decimal("0.01"))
+            total = taxable_total + service_charge + tax
             points_earned = int(total // Decimal("100")) if customer else 0
             sale = Sale.objects.create(
                 receipt_number=f"POS-{timezone.now():%Y%m%d}-{uuid.uuid4().hex[:6].upper()}",
@@ -665,10 +693,13 @@ def complete_sale(request):
                 user=request.user,
                 customer=customer,
                 payment_method=payment,
+                order_type=order_type,
                 subtotal=subtotal,
                 discount_rate=discount_rate,
                 discount=discount,
                 loyalty_discount=loyalty_discount,
+                service_charge_rate=service_charge_rate,
+                service_charge=service_charge,
                 tax=tax,
                 total=total,
                 loyalty_points_earned=points_earned,
@@ -714,7 +745,11 @@ def complete_sale(request):
                 store,
                 request.user,
                 "sale.completed",
-                f"Completed {sale.receipt_number} for {total:.2f}.",
+                (
+                    f"Completed {sale.receipt_number} as {order_type} for {total:.2f}."
+                    if store.supports_dining
+                    else f"Completed retail sale {sale.receipt_number} for {total:.2f}."
+                ),
                 approved_by=approver if discount_rate else None,
             )
     except SaleInputError as exc:
@@ -724,6 +759,7 @@ def complete_sale(request):
     messages.success(request, f"Sale {sale.receipt_number} completed successfully.")
     if store.receipt_after_sale:
         return redirect("receipt", pk=sale.pk)
+    request.session["last_completed_sale_id"] = sale.pk
     return redirect("sell")
 
 
@@ -851,6 +887,54 @@ def products(request):
 
 @store_required(permission="can_manage_inventory", operational=True)
 @require_POST
+def edit_product_picture(request, pk):
+    product = get_object_or_404(Product, pk=pk, store=request.store)
+    form = ProductPictureForm(request.POST, instance=product)
+    if not form.is_valid():
+        error = form.errors.get("picture_url", ["Enter a valid product picture URL."])[0]
+        messages.error(request, f"Picture was not updated: {error}")
+        return redirect("products")
+    product = form.save()
+    _audit(
+        request.store,
+        request.user,
+        "inventory.picture_updated",
+        f"Updated the product picture for {product.name}.",
+    )
+    if product.picture_url:
+        messages.success(request, f"{product.name}'s picture was updated.")
+    else:
+        messages.success(request, f"{product.name} now uses its automatic placeholder picture.")
+    return redirect("products")
+
+
+@store_required
+def product_placeholder(request, pk):
+    product = get_object_or_404(Product, pk=pk, store=request.store)
+    palettes = {
+        "mint": ("#dff7ed", "#118564"),
+        "amber": ("#fff0c9", "#a96408"),
+        "coral": ("#ffe3dc", "#b84b35"),
+        "blue": ("#e1edff", "#315eaa"),
+    }
+    background, foreground = palettes.get(product.color_class, palettes["blue"])
+    product_name = escape(product.name[:34])
+    category = escape(product.category[:28])
+    icon = escape(product.picture_emoji)
+    svg = f"""<svg xmlns="http://www.w3.org/2000/svg" width="640" height="420" viewBox="0 0 640 420" role="img" aria-label="{product_name}">
+<rect width="640" height="420" rx="34" fill="{background}"/>
+<circle cx="320" cy="154" r="94" fill="#fff" fill-opacity=".72"/>
+<text x="320" y="186" text-anchor="middle" font-family="Segoe UI Emoji,Apple Color Emoji,sans-serif" font-size="104">{icon}</text>
+<text x="320" y="300" text-anchor="middle" font-family="Arial,sans-serif" font-size="34" font-weight="700" fill="{foreground}">{product_name}</text>
+<text x="320" y="342" text-anchor="middle" font-family="Arial,sans-serif" font-size="20" fill="{foreground}" opacity=".72">{category}</text>
+</svg>"""
+    response = HttpResponse(svg, content_type="image/svg+xml; charset=utf-8")
+    response["Cache-Control"] = "private, max-age=3600"
+    return response
+
+
+@store_required(permission="can_manage_inventory", operational=True)
+@require_POST
 def add_product_category(request):
     form = ProductCategoryForm(request.POST, store=request.store)
     if not form.is_valid():
@@ -927,12 +1011,12 @@ def reports(request):
             range_key = "custom"
         else:
             messages.error(request, "Choose a valid report period of 731 days or less.")
-    sales = Sale.objects.filter(
+    transactions = Sale.objects.filter(
         store=request.store,
-        status="Completed",
         created_at__date__gte=start,
         created_at__date__lte=end,
     )
+    sales = transactions.filter(status="Completed")
     sale_items = SaleItem.objects.filter(sale__in=sales)
     top_products = sale_items.values("product_name").annotate(
         quantity=Sum("quantity"), revenue=Sum("line_total")
@@ -1000,6 +1084,10 @@ def reports(request):
         "comparison_percent": comparison_percent,
         "cashier_performance": cashier_performance,
         "category_performance": category_performance,
+        "service_charges": _money_sum(sales, "service_charge"),
+        "dine_in_orders": sales.filter(order_type=Sale.OrderType.DINE_IN).count(),
+        "take_out_orders": sales.filter(order_type=Sale.OrderType.TAKE_OUT).count(),
+        "transactions": transactions.select_related("user", "customer").order_by("-created_at")[:100],
     }
     return render(request, "pos/reports.html", context)
 
@@ -1009,7 +1097,6 @@ def settings_page(request):
     store = request.store
     team_form = StoreTeamMemberForm(store=store)
     schedule_form = ReportScheduleForm(store=store)
-    subscription_form = SubscriptionRequestForm(maya_enabled=django_settings.MAYA_CHECKOUT_ENABLED)
     if request.method == "POST":
         action = request.POST.get("action")
         if action == "team":
@@ -1022,7 +1109,8 @@ def settings_page(request):
                 try:
                     membership = team_form.save()
                 except ValidationError as exc:
-                    team_form.add_error(None, exc)
+                    for message in exc.messages:
+                        team_form.add_error(None, message)
                 else:
                     _audit(
                         store,
@@ -1041,64 +1129,6 @@ def settings_page(request):
                 messages.success(request, "The scheduled report recipient was added.")
                 return redirect("settings")
             messages.error(request, "Please correct the scheduled report details below.")
-        elif action == "subscription":
-            subscription_form = SubscriptionRequestForm(
-                request.POST,
-                maya_enabled=django_settings.MAYA_CHECKOUT_ENABLED,
-            )
-            has_open_request = store.legacy_subscription_requests.filter(
-                status__in=[SubscriptionRequest.Status.PENDING, SubscriptionRequest.Status.AWAITING_PAYMENT]
-            ).exists()
-            if has_open_request:
-                subscription_form.add_error(None, "This store already has a payment awaiting verification.")
-            if subscription_form.is_valid() and not has_open_request:
-                subscription_request = subscription_form.save(commit=False)
-                subscription_request.store = store
-                subscription_request.requested_by = request.user
-                subscription_request.amount = subscription_request.expected_amount
-                subscription_request.status = SubscriptionRequest.Status.PENDING
-                subscription_request.save()
-                if subscription_request.payment_method == SubscriptionRequest.PaymentMethod.MAYA:
-                    result_urls = {
-                        outcome: request.build_absolute_uri(
-                            reverse("maya_payment_result", args=[subscription_request.pk, outcome])
-                        )
-                        for outcome in ("success", "failure", "cancel")
-                    }
-                    try:
-                        checkout_url = create_checkout(
-                            subscription_request,
-                            result_urls["success"],
-                            result_urls["failure"],
-                            result_urls["cancel"],
-                        )
-                    except MayaCheckoutError as exc:
-                        subscription_request.status = SubscriptionRequest.Status.FAILED
-                        subscription_request.save(update_fields=["status"])
-                        messages.error(request, str(exc))
-                        return redirect("settings")
-                    _audit(
-                        store,
-                        request.user,
-                        "subscription.checkout_created",
-                        f"Started a secure Maya Checkout for {subscription_request.plan}.",
-                    )
-                    return redirect(checkout_url)
-                _audit(
-                    store,
-                    request.user,
-                    "subscription.payment_submitted",
-                    f"Submitted {subscription_request.plan} via {subscription_request.get_payment_method_display()}.",
-                )
-                if subscription_request.payment_method == SubscriptionRequest.PaymentMethod.CASH:
-                    messages.success(
-                        request,
-                        "Cash request submitted. Contact Michael John Ojoy using the payment contacts shown below to arrange the transaction.",
-                    )
-                else:
-                    messages.success(request, "Bank payment submitted for verification. Access activates after approval.")
-                return redirect("settings")
-            messages.error(request, "Please correct the subscription payment details below.")
         else:
             raise PermissionDenied("This store setting cannot be changed here.")
     return render(
@@ -1108,14 +1138,8 @@ def settings_page(request):
             "store": store,
             "team_form": team_form,
             "schedule_form": schedule_form,
-            "subscription_form": subscription_form,
-            "subscription_requests": store.legacy_subscription_requests.select_related("requested_by", "reviewed_by")[:10],
-            "payment_contact_email": django_settings.PAYMENT_CONTACT_EMAIL,
-            "payment_contact_messenger": django_settings.PAYMENT_CONTACT_MESSENGER,
-            "payment_contact_phone": django_settings.PAYMENT_CONTACT_PHONE,
-            "landbank_account_name": django_settings.LANDBANK_ACCOUNT_NAME,
-            "landbank_account_last4": django_settings.LANDBANK_ACCOUNT_LAST4,
-            "landbank_qr_image_url": django_settings.LANDBANK_QR_IMAGE_URL,
+            "starter_price": StoreSettings.PLAN_PRICES["Starter"],
+            "pro_price": StoreSettings.PLAN_PRICES["Pro"],
             "report_schedules": store.report_schedules.all(),
             "administrator_memberships": store.memberships.filter(
                 role=StoreMembership.Role.ADMINISTRATOR,
@@ -1128,76 +1152,6 @@ def settings_page(request):
             "staff_count": store.active_staff_count,
             "staff_slots_remaining": max(0, store.staff_limit - store.active_staff_count),
         },
-    )
-
-
-@store_required(administrator=True)
-def maya_payment_result(request, pk, outcome):
-    if outcome not in {"success", "failure", "cancel"}:
-        raise Http404("Unknown payment result.")
-    subscription_request = get_object_or_404(
-        SubscriptionRequest,
-        pk=pk,
-        store=request.store,
-        payment_method=SubscriptionRequest.PaymentMethod.MAYA,
-    )
-    if outcome == "success" and subscription_request.provider_payment_id and not subscription_request.activated_at:
-        try:
-            subscription_request, _ = reconcile_payment(
-                subscription_request.pk,
-                subscription_request.provider_payment_id,
-            )
-        except MayaCheckoutError:
-            messages.info(request, "Maya is still confirming the payment. Access will activate as soon as its verified webhook arrives.")
-        else:
-            if subscription_request.activated_at:
-                messages.success(request, "Payment confirmed. Your subscription access is active now.")
-            else:
-                messages.info(request, "Payment is still processing. This page will update after Maya confirms it.")
-    elif outcome == "cancel":
-        messages.info(request, "The Maya checkout was cancelled. No access changes were made.")
-    elif outcome == "failure":
-        messages.error(request, "Maya could not complete that payment. No access changes were made.")
-    else:
-        messages.success(request, "Your subscription payment has already been activated.")
-    return redirect(f"{reverse('settings')}#subscription")
-
-
-@csrf_exempt
-@require_POST
-def maya_payment_webhook(request):
-    if not django_settings.MAYA_CHECKOUT_ENABLED:
-        return JsonResponse({"detail": "Maya Checkout is disabled."}, status=404)
-    forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR", "")
-    source_ip = forwarded_for.split(",", 1)[0].strip() or request.META.get("REMOTE_ADDR", "")
-    if django_settings.MAYA_WEBHOOK_IP_CHECK and source_ip not in django_settings.MAYA_WEBHOOK_ALLOWED_IPS:
-        return JsonResponse({"detail": "Webhook source is not allowed."}, status=403)
-    try:
-        payload = json.loads(request.body.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError):
-        return JsonResponse({"detail": "Invalid JSON."}, status=400)
-    reference = payload.get("requestReferenceNumber")
-    payment_id = payload.get("id")
-    if not reference or not payment_id:
-        return JsonResponse({"detail": "Missing payment identifiers."}, status=400)
-    subscription_request = SubscriptionRequest.objects.filter(
-        provider_reference=reference,
-        payment_method=SubscriptionRequest.PaymentMethod.MAYA,
-    ).first()
-    if not subscription_request:
-        return JsonResponse({"detail": "Payment request not found."}, status=404)
-    if subscription_request.provider_payment_id and subscription_request.provider_payment_id != payment_id:
-        return JsonResponse({"detail": "Payment identifier mismatch."}, status=400)
-    try:
-        subscription_request, changed = reconcile_payment(subscription_request.pk, payment_id)
-    except MayaCheckoutError:
-        return JsonResponse({"detail": "Payment could not be verified."}, status=503)
-    return JsonResponse(
-        {
-            "received": True,
-            "activated": bool(changed or subscription_request.activated_at),
-            "status": subscription_request.status,
-        }
     )
 
 
@@ -1219,6 +1173,12 @@ def remove_staff(request, pk):
 
 @store_required(administrator=True, pro=True)
 def multi_store_dashboard(request):
+    """Render portfolio-wide operating data for the signed-in Pro owner.
+
+    The store list comes only from active administrator memberships. Every
+    metric is then scoped to those stores, while opening an action goes through
+    ``switch_store`` so the destination page receives the correct tenant.
+    """
     pro_memberships = StoreMembership.objects.filter(
         user=request.user,
         active=True,
@@ -1226,29 +1186,73 @@ def multi_store_dashboard(request):
         store__active_plan="Pro",
     ).select_related("store")
     stores = [membership.store for membership in pro_memberships]
-    start = timezone.localdate() - timedelta(days=29)
+    today = timezone.localdate()
+    start = today - timedelta(days=29)
     rows = []
+    alerts = []
     for store in stores:
         sales = Sale.objects.filter(
             store=store,
             status="Completed",
             created_at__date__gte=start,
         )
+        today_sales = sales.filter(created_at__date=today)
         products = Product.objects.filter(store=store, active=True)
-        rows.append(
-            {
-                "store": store,
-                "revenue": _money_sum(sales),
-                "orders": sales.count(),
-                "low_stock": products.filter(stock__lte=F("low_stock_threshold")).count(),
-                "inventory_units": products.aggregate(value=Sum("stock"))["value"] or 0,
-            }
+        low_stock = products.filter(stock__lte=F("low_stock_threshold")).count()
+        out_of_stock = products.filter(stock=0).count()
+        team_counts = store.memberships.filter(active=True).aggregate(
+            administrators=Count("id", filter=Q(role=StoreMembership.Role.ADMINISTRATOR)),
+            staff=Count("id", filter=Q(role=StoreMembership.Role.STAFF)),
         )
+        open_register = CashRegisterSession.objects.filter(
+            store=store,
+            closed_at__isnull=True,
+        ).select_related("user").first()
+        row_alerts = []
+        if not store.is_subscription_active:
+            row_alerts.append(f"Subscription is {store.subscription_status.lower()}.")
+        elif store.days_until_expiry is not None and store.days_until_expiry <= 7:
+            if store.days_until_expiry == 0:
+                row_alerts.append("Subscription expires today.")
+            else:
+                row_alerts.append(f"Subscription expires in {store.days_until_expiry} day(s).")
+        if low_stock:
+            stock_message = f"{low_stock} low-stock product(s)"
+            if out_of_stock:
+                stock_message += f", including {out_of_stock} out of stock"
+            row_alerts.append(f"{stock_message}.")
+        if not products.exists():
+            row_alerts.append("No active products have been added.")
+        row = {
+            "store": store,
+            "revenue": _money_sum(sales),
+            "orders": sales.count(),
+            "today_revenue": _money_sum(today_sales),
+            "today_orders": today_sales.count(),
+            "last_sale": Sale.objects.filter(store=store, status="Completed").first(),
+            "product_count": products.count(),
+            "low_stock": low_stock,
+            "out_of_stock": out_of_stock,
+            "inventory_units": products.aggregate(value=Sum("stock"))["value"] or 0,
+            "customers": Customer.objects.filter(store=store, active=True).count(),
+            "administrators": team_counts["administrators"],
+            "staff": team_counts["staff"],
+            "open_register": open_register,
+            "open_purchase_orders": PurchaseOrder.objects.filter(
+                store=store,
+                status=PurchaseOrder.Status.ORDERED,
+            ).count(),
+            "alerts": row_alerts,
+        }
+        rows.append(row)
+        if row_alerts:
+            alerts.append(row)
     all_sales = Sale.objects.filter(
         store__in=stores,
         status="Completed",
         created_at__date__gte=start,
     )
+    today_sales = all_sales.filter(created_at__date=today)
     return render(
         request,
         "pos/multi_store.html",
@@ -1258,6 +1262,12 @@ def multi_store_dashboard(request):
             "store_count": len(stores),
             "total_revenue": _money_sum(all_sales),
             "total_orders": all_sales.count(),
+            "today_revenue": _money_sum(today_sales),
+            "today_orders": today_sales.count(),
+            "total_inventory_units": sum(row["inventory_units"] for row in rows),
+            "total_low_stock": sum(row["low_stock"] for row in rows),
+            "attention_store_count": len(alerts),
+            "alerts": alerts,
             "recent_activity": StoreAuditEvent.objects.filter(store__in=stores).select_related("store", "actor")[:12],
         },
     )
@@ -1748,13 +1758,21 @@ def remove_report_schedule(request, pk):
 @login_required
 @require_POST
 def switch_store(request):
+    """Select an assigned Pro store and redirect into its tenant-scoped view."""
     membership = get_object_or_404(
         StoreMembership,
         store_id=request.POST.get("store_id"),
         user=request.user,
         active=True,
     )
+    memberships = StoreMembership.objects.filter(user=request.user, active=True).select_related("store")
+    if memberships.count() > 1 and (
+        not membership.store.is_pro
+        or memberships.exclude(store__active_plan="Pro").exists()
+    ):
+        raise PermissionDenied("Multiple-store switching requires the Pro plan on every assigned store.")
     request.session[CURRENT_STORE_SESSION_KEY] = membership.store_id
+    messages.success(request, f"Now viewing {membership.store.business_name}.")
     next_url = request.POST.get("next", "")
     if url_has_allowed_host_and_scheme(next_url, allowed_hosts={request.get_host()}):
         return redirect(next_url)
@@ -1767,9 +1785,9 @@ def export_products(request):
     response["Content-Disposition"] = 'attachment; filename="positive-products.csv"'
     response.write("\ufeff")
     writer = csv.writer(response)
-    writer.writerow(["Name", "Category", "Barcode", "Cost", "Price", "Stock", "Low stock threshold"])
+    writer.writerow(["Name", "Category", "Barcode", "Cost", "Price", "Stock", "Low stock threshold", "Picture URL"])
     for product in Product.objects.filter(store=request.store):
-        writer.writerow([_csv_safe(product.name), product.category, _csv_safe(product.barcode), product.cost, product.price, product.stock, product.low_stock_threshold])
+        writer.writerow([_csv_safe(product.name), product.category, _csv_safe(product.barcode), product.cost, product.price, product.stock, product.low_stock_threshold, _csv_safe(product.picture_url)])
     return response
 
 
@@ -1796,13 +1814,21 @@ def export_sales(request):
     response["Content-Disposition"] = f'attachment; filename="{filename}"'
     response.write("\ufeff")
     writer = csv.writer(response)
-    writer.writerow(["Receipt", "Date", "Cashier", "Customer", "Payment", "Subtotal", "Discount", "Loyalty discount", "Tax", "Total"])
+    headers = ["Receipt", "Date", "Cashier", "Customer"]
+    if request.store.supports_dining:
+        headers.extend(["Order type", "Service charge rate", "Service charge"])
+    headers.extend(["Payment", "Subtotal", "Discount", "Loyalty discount", "Tax", "Total"])
+    writer.writerow(headers)
     for sale in sales:
-        writer.writerow([
+        row = [
             sale.receipt_number,
             sale.created_at.isoformat(),
             _csv_safe(sale.user.username),
             _csv_safe(sale.customer.name if sale.customer else ""),
+        ]
+        if request.store.supports_dining:
+            row.extend([sale.order_type, sale.service_charge_rate, sale.service_charge])
+        row.extend([
             sale.payment_method,
             sale.subtotal,
             sale.discount,
@@ -1810,4 +1836,5 @@ def export_sales(request):
             sale.tax,
             sale.total,
         ])
+        writer.writerow(row)
     return response

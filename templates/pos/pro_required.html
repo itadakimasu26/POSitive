@@ -3,5 +3,5 @@
 {% block section %}Plan access{% endblock %}
 {% block page_title %}Available with Pro{% endblock %}
 {% block content %}
-<section class="receipt-wrap"><article class="receipt-card blocked-card"><span class="stat-icon violet">P</span><h2>This workflow is included with Pro.</h2><p>{{ store.business_name }} is currently using the {{ store.active_plan }} plan. Pro adds multiple administrator access, advanced inventory, customers and loyalty, cash reconciliation, purchasing, and deeper reporting.</p><a class="secondary" href="{% url 'dashboard' %}">Return to overview</a></article></section>
+<section class="receipt-wrap"><article class="receipt-card blocked-card"><span class="stat-icon violet">P</span><h2>This workflow is included with Pro.</h2><p>{{ store.business_name }} is currently using the {{ store.active_plan }} plan. Pro adds shared administrator access across Pro stores, an owner super dashboard with portfolio-wide sales and operations data, advanced inventory, customers and loyalty, cash reconciliation, purchasing, approvals, and deeper reporting.</p><a class="secondary" href="{% url 'dashboard' %}">Return to overview</a></article></section>
 {% endblock %}

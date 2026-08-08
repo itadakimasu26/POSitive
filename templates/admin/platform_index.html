@@ -52,7 +52,6 @@
         <article><span class="management-icon">S</span><div><h2>Businesses</h2><p>Create stores and maintain plans, dates, status, and administrators.</p><nav><a href="{% url 'admin:pos_storesettings_changelist' %}">All stores</a><a href="{% url 'admin:pos_storesettings_add' %}">Add store</a></nav></div></article>
         <article><span class="management-icon">A</span><div><h2>Account access</h2><p>Review user accounts and the stores explicitly assigned to each person.</p><nav><a href="{% url 'admin:auth_user_changelist' %}">Users</a><a href="{% url 'admin:pos_storemembership_changelist' %}">Assignments</a></nav></div></article>
         <article><span class="management-icon">O</span><div><h2>Operations</h2><p>Audit store-scoped products and completed sales when support is needed.</p><nav><a href="{% url 'admin:pos_product_changelist' %}">Products</a><a href="{% url 'admin:pos_sale_changelist' %}">Sales</a></nav></div></article>
-        <article><span class="management-icon">R</span><div><h2>Requests</h2><p>Review subscription requests submitted through existing store workflows.</p><nav><a href="{% url 'admin:pos_subscriptionrequest_changelist' %}">Subscription requests</a></nav></div></article>
     </div>
 </section>
 {% endblock %}

@@ -20,6 +20,8 @@ urlpatterns = [
     path("products/", views.products, name="products"),
     path("products/categories/add/", views.add_product_category, name="add_product_category"),
     path("products/<int:pk>/stock/", views.adjust_stock, name="adjust_stock"),
+    path("products/<int:pk>/picture/", views.edit_product_picture, name="edit_product_picture"),
+    path("products/<int:pk>/placeholder.svg", views.product_placeholder, name="product_placeholder"),
     path("products/import/", views.import_products, name="import_products"),
     path("products/export/", views.export_products, name="export_products"),
     path("reports/", views.reports, name="reports"),
@@ -32,8 +34,6 @@ urlpatterns = [
     path("pro/purchasing/", views.purchasing, name="purchasing"),
     path("pro/purchasing/<int:pk>/receive/", views.receive_purchase_order, name="receive_purchase_order"),
     path("settings/", views.settings_page, name="settings"),
-    path("settings/subscription/maya/result/<int:pk>/<str:outcome>/", views.maya_payment_result, name="maya_payment_result"),
-    path("payments/maya/webhook/", views.maya_payment_webhook, name="maya_payment_webhook"),
     path("settings/staff/<int:pk>/remove/", views.remove_staff, name="remove_staff"),
     path("settings/reports/<int:pk>/remove/", views.remove_report_schedule, name="remove_report_schedule"),
 ]
