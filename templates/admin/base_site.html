@@ -1,0 +1,33 @@
+{% extends "admin/base.html" %}
+{% load static %}
+
+{% block title %}{% if subtitle %}{{ subtitle }} · {% endif %}POSitive! Platform{% endblock %}
+
+{% block extrastyle %}
+{{ block.super }}
+<link rel="stylesheet" href="{% static 'pos/css/admin.css' %}">
+{% endblock %}
+
+{% block extrahead %}
+{{ block.super }}
+<script src="{% static 'pos/js/admin.js' %}" defer></script>
+{% endblock %}
+
+{% block branding %}
+<a class="admin-brand" href="{% url 'admin:index' %}">{% include 'includes/brand_logo.html' with logo_class='admin-logo' %}</a>
+{% endblock %}
+
+{% block nav-global %}{% endblock %}
+
+{% block usertools %}
+{% if has_permission %}
+<div id="user-tools" class="admin-account">
+    <span class="admin-account-avatar">{{ user.username|slice:':2'|upper }}</span>
+    <span class="admin-account-copy"><strong>{{ user.get_full_name|default:user.username }}</strong><small>Platform administrator</small></span>
+    <nav class="admin-account-actions" aria-label="Account actions">
+        <a href="{% url 'admin:password_change' %}">Password</a>
+        <form method="post" action="{% url 'admin:logout' %}">{% csrf_token %}<button type="submit">Log out</button></form>
+    </nav>
+</div>
+{% endif %}
+{% endblock %}

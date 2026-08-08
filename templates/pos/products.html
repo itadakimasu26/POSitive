@@ -1,0 +1,39 @@
+{% extends 'pos/base.html' %}
+{% block title %}Products — POSitive!{% endblock %}
+{% block section %}Inventory{% endblock %}
+{% block page_title %}Products & stock{% endblock %}
+{% block content %}
+<div class="stack">
+    <section class="section-title product-title"><div><span class="eyebrow">{{ store.get_store_type_display }}</span><h2>Products & inventory</h2><p>Keep prices, categories, and stock levels accurate.</p></div><div><a class="secondary" href="{% url 'export_products' %}">⇩ Export CSV</a>{% if store.is_pro %}<button class="secondary" data-modal-open="importModal">Import CSV</button>{% endif %}<button class="secondary" data-modal-open="categoryModal">+ Add category</button><button class="primary" data-modal-open="productModal">＋ Add product</button></div></section>
+    <section class="stat-grid mini-stats"><article class="stat-card"><p>Total products</p><strong>{{ products|length }}</strong><small>Current filtered catalog</small></article><article class="stat-card"><p>Inventory value</p><strong>₱{{ inventory_value|floatformat:2 }}</strong><small>At selling price</small></article><article class="stat-card"><p>Low stock</p><strong>{{ low_count }}</strong><small class="attention">Reorder soon</small></article></section>
+    <section class="card table-card">
+        <div class="table-toolbar"><form class="search-box compact-search" method="get">⌕<input name="q" value="{{ query }}" placeholder="Search products" aria-label="Search inventory"></form><span class="table-note">Use +/− for quick stock adjustments</span></div>
+        <div class="responsive-table"><table><thead><tr><th>Product</th><th>Barcode</th><th>Category</th><th>Stock</th><th>Price</th><th>Status</th><th>Quick adjust</th></tr></thead><tbody>
+            {% for product in products %}<tr><td><span class="table-art {{ product.color_class }}">{{ product.emoji }}</span><strong>{{ product.name }}</strong></td><td><code>{{ product.barcode }}</code></td><td>{{ product.category }}</td><td>{{ product.stock }}</td><td>₱{{ product.price|floatformat:2 }}</td><td><span class="status {% if product.is_low_stock %}low{% else %}good{% endif %}">{% if product.is_low_stock %}Low stock{% else %}In stock{% endif %}</span></td><td><div class="table-stepper"><form method="post" action="{% url 'adjust_stock' product.pk %}">{% csrf_token %}<input type="hidden" name="amount" value="-1"><button aria-label="Remove one {{ product.name }}">−</button></form><span>{{ product.stock }}</span><form method="post" action="{% url 'adjust_stock' product.pk %}">{% csrf_token %}<input type="hidden" name="amount" value="1"><button aria-label="Add one {{ product.name }}">＋</button></form></div></td></tr>{% empty %}<tr><td colspan="7" class="empty-table">No products match your search.</td></tr>{% endfor %}
+        </tbody></table></div>
+    </section>
+</div>
+
+{% if store.is_pro %}<div class="modal-backdrop" id="importModal" aria-hidden="true"><form class="modal" method="post" action="{% url 'import_products' %}" enctype="multipart/form-data">{% csrf_token %}<div class="modal-head"><div><span class="eyebrow">Pro bulk tools</span><h2>Import products</h2></div><button type="button" data-modal-close>×</button></div><p class="modal-note">Upload up to 1,000 rows. Existing barcodes are updated; new barcodes create products. The entire file rolls back if any row is invalid.</p><label>CSV file{{ import_form.csv_file }}{{ import_form.csv_file.errors }}</label><small>{{ import_form.csv_file.help_text }}</small><div class="modal-actions"><button type="button" class="secondary" data-modal-close>Cancel</button><button class="primary">Import products</button></div></form></div>{% endif %}
+
+<div class="modal-backdrop" id="categoryModal" aria-hidden="true">
+    <form class="modal" method="post" action="{% url 'add_product_category' %}">{% csrf_token %}<div class="modal-head"><div><span class="eyebrow">{{ store.get_store_type_display }}</span><h2>Add a product category</h2></div><button type="button" data-modal-close aria-label="Close">×</button></div>
+        <p class="modal-note">Your store started with categories suited to its business type. Add another only when your catalog needs it.</p>
+        <label>Category name{{ category_form.name }}{{ category_form.name.errors }}</label>
+        <div class="category-preview" aria-label="Current product categories">{% for category in product_categories %}<span>{{ category.name }}</span>{% endfor %}</div>
+        <div class="modal-actions"><button type="button" class="secondary" data-modal-close>Cancel</button><button class="primary">Add category</button></div>
+    </form>
+</div>
+
+<div class="modal-backdrop" id="productModal" aria-hidden="true">
+    <form class="modal" method="post" id="new-product">{% csrf_token %}<div class="modal-head"><div><span class="eyebrow">Inventory</span><h2>Add new product</h2></div><button type="button" data-modal-close aria-label="Close">×</button></div>
+        {% if form.non_field_errors %}<div class="form-error">{{ form.non_field_errors }}</div>{% endif %}
+        <label>Product name{{ form.name }}{{ form.name.errors }}</label>
+        <div class="form-row"><label>Category{{ form.category }}{{ form.category.errors }}<small>{{ form.category.help_text }}</small></label><label>Barcode{{ form.barcode }}{{ form.barcode.errors }}</label></div>
+        <div class="form-row"><label>Unit cost{{ form.cost }}{{ form.cost.errors }}</label><label>Selling price{{ form.price }}{{ form.price.errors }}</label></div>
+        <div class="form-row"><label>Opening stock{{ form.stock }}{{ form.stock.errors }}</label><label>Low-stock level{{ form.low_stock_threshold }}{{ form.low_stock_threshold.errors }}</label></div>
+        <div class="modal-actions"><button type="button" class="secondary" data-modal-close>Cancel</button><button class="primary">Add product</button></div>
+    </form>
+</div>
+{% if form.errors %}<script>window.addEventListener('DOMContentLoaded',()=>window.POSitive.openModal('productModal'));</script>{% endif %}
+{% endblock %}

@@ -1,0 +1,80 @@
+{% extends 'pos/base.html' %}
+{% block title %}Settings — POSitive!{% endblock %}
+{% block section %}Workspace{% endblock %}
+{% block page_title %}Store settings & team{% endblock %}
+{% block content %}
+<div class="stack">
+    <section class="section-title"><div><span class="eyebrow">{{ store.store_id }}</span><h2>{{ store.business_name }}</h2><p>Manage this store’s operating details and assigned staff.</p></div></section>
+    <section class="settings-grid">
+        <article class="card settings-card">
+            <div class="settings-heading"><span class="quick-icon mint">⌂</span><div><h3>Store details</h3><p>Business profile used throughout the workspace</p></div></div>
+            <dl class="store-detail-list"><div><dt>Business name</dt><dd>{{ store.business_name }}</dd></div><div><dt>Store ID</dt><dd>{{ store.store_id }}</dd></div><div><dt>Store type</dt><dd>{{ store.get_store_type_display }}</dd></div><div><dt>Tax rate</dt><dd>{{ store.tax_rate }}%</dd></div><div><dt>Contact number</dt><dd>{{ store.contact_number|default:'Not set' }}</dd></div><div class="wide"><dt>Address</dt><dd>{{ store.address|default:'Not set' }}</dd></div></dl>
+            <div class="preference-list"><span>Receipt after sale: <strong>{{ store.receipt_after_sale|yesno:'On,Off' }}</strong></span><span>Stock alerts: <strong>{{ store.low_stock_alerts|yesno:'On,Off' }}</strong></span><span>Barcode scanning: <strong>{{ store.barcode_scanning|yesno:'On,Off' }}</strong></span></div>
+        </article>
+
+        <article class="card settings-card">
+            <div class="settings-heading"><span class="quick-icon blue">♙</span><div><h3>Assigned team</h3><p>{{ staff_count }} of {{ store.staff_limit }} {{ store.active_plan }} staff seats used</p></div></div>
+            {% for membership in administrator_memberships %}<div class="team-row"><span class="profile-avatar">{{ membership.user.username|slice:':2'|upper }}</span><span><strong>{{ membership.user.get_full_name|default:membership.user.username }}</strong><small>{{ membership.user.email|default:'No email added' }}</small></span><b>Administrator</b></div>{% endfor %}
+            {% for membership in team_memberships %}<div class="team-row"><span class="profile-avatar">{{ membership.user.username|slice:':2'|upper }}</span><span><strong>{{ membership.user.get_full_name|default:membership.user.username }}</strong><small>{{ membership.user.email|default:'No email added' }} · {{ membership.get_access_level_display }}</small></span><form method="post" action="{% url 'remove_staff' membership.pk %}" onsubmit="return confirm('Remove this user from {{ store.business_name|escapejs }}?')">{% csrf_token %}<button class="team-remove" aria-label="Remove {{ membership.user.username }}">Remove</button></form></div>{% empty %}<div class="empty-small">No staff accounts are assigned to this store.</div>{% endfor %}
+            {% if store.is_subscription_active and staff_slots_remaining > 0 %}<button class="secondary inline-button" type="button" data-modal-open="teamModal">＋ Add staff account</button>{% elif not store.is_subscription_active %}<p class="settings-note">Staff access cannot be added while the subscription is {{ store.subscription_status|lower }}.</p>{% else %}<p class="settings-note">This store has used every staff seat in its {{ store.active_plan }} plan.</p>{% endif %}
+        </article>
+
+        <article class="card settings-card data-card"><div class="settings-heading"><span class="quick-icon violet">⇩</span><div><h3>Store data</h3><p>Exports contain only {{ store.business_name }} records</p></div></div><p class="settings-note">Data scope: current store only<br>Last settings update: {{ store.updated_at|date:'M j, Y g:i A' }}</p><div class="button-row"><a class="secondary" href="{% url 'export_products' %}">Export products</a><a class="secondary" href="{% url 'export_sales' %}">Export sales</a></div></article>
+    </section>
+
+    <section class="plans-section" id="subscription">
+        <div class="plans-head"><div><span class="eyebrow">Current subscription</span><h2>{{ store.active_plan }} plan</h2><p>Your plan determines team capacity and access to advanced operations.</p></div><span class="current-plan">{{ store.subscription_status|upper }}</span></div>
+        <div class="subscription-summary">
+            <div><span>Subscription starts</span><strong>{{ store.subscription_start|date:'M j, Y'|default:'Not set' }}</strong></div>
+            <div><span>Subscription ends</span><strong>{{ store.subscription_end|date:'M j, Y'|default:'No end date' }}</strong></div>
+            <div><span>Staff allowance</span><strong>{{ store.staff_limit }} per store</strong></div>
+            <div><span>Seats remaining</span><strong>{{ staff_slots_remaining }}</strong></div>
+        </div>
+        <div class="subscription-payment-grid">
+            <form method="post" class="subscription-form" id="subscriptionPaymentForm">{% csrf_token %}<input type="hidden" name="action" value="subscription">
+                <div class="payment-form-head"><div><span class="eyebrow">Renew or upgrade</span><h3>Submit a subscription payment</h3></div><strong id="subscriptionAmount">₱399.00</strong></div>
+                {% if subscription_form.non_field_errors %}<div class="form-error">{{ subscription_form.non_field_errors }}</div>{% endif %}
+                <div class="form-row"><label>Plan{{ subscription_form.plan }}{{ subscription_form.plan.errors }}</label><label>Payment method{{ subscription_form.payment_method }}{{ subscription_form.payment_method.errors }}</label></div>
+                <div class="form-row"><label>Name used for payment{{ subscription_form.payer_name }}{{ subscription_form.payer_name.errors }}</label><label>Transaction reference{{ subscription_form.payment_reference }}{{ subscription_form.payment_reference.errors }}</label></div>
+                <label>Contact email or mobile{{ subscription_form.contact_details }}{{ subscription_form.contact_details.errors }}</label>
+                <label>Notes{{ subscription_form.message }}{{ subscription_form.message.errors }}</label>
+                <p class="payment-security-note">Landbank and cash submissions are activated as soon as the platform administrator verifies the transaction.</p>
+                <button class="primary">Submit payment for verification</button>
+            </form>
+            <div class="payment-instructions">
+                <article class="payment-instruction" data-payment-panel="Bank transfer">
+                    <div class="bank-brand"><span>🌻</span><strong>LANDBANK</strong></div>
+                    <p>Transfer using InstaPay, then enter the transaction reference in the form.</p>
+                    <dl><div><dt>Account name</dt><dd>{{ landbank_account_name }}</dd></div><div><dt>Account number</dt><dd>Account ending in {{ landbank_account_last4 }}</dd></div></dl>
+                    {% if landbank_qr_image_url %}<img class="bank-qr" src="{{ landbank_qr_image_url }}" alt="Landbank InstaPay QR code">{% else %}<div class="qr-placeholder"><strong>InstaPay QR</strong><span>The original payment QR image can be added once its file or hosted URL is available.</span></div>{% endif %}
+                </article>
+                <article class="payment-instruction" data-payment-panel="Cash" hidden>
+                    <span class="eyebrow">Cash transaction</span><h3>Contact Michael John Ojoy</h3><p>Coordinate the cash payment first. Your subscription will be activated immediately after the transaction is confirmed.</p>
+                    <ul class="payment-contacts"><li><span>Email</span><a href="mailto:{{ payment_contact_email }}">{{ payment_contact_email }}</a></li><li><span>Messenger</span><strong>{{ payment_contact_messenger }}</strong></li><li><span>SMS / Viber / WhatsApp</span><a href="tel:{{ payment_contact_phone }}">{{ payment_contact_phone }}</a></li></ul>
+                </article>
+                <aside class="instant-payment-note"><strong>Landbank activation flow</strong><p>Transfer to the Landbank account, submit the transaction reference, and contact the administrator if urgent. Once approved, the selected subscription opens immediately. GCash is temporarily disabled.</p></aside>
+            </div>
+        </div>
+        <div class="subscription-history">
+            <div class="table-heading"><div><h3>Payment requests</h3><p>Recent verification and activation activity</p></div></div>
+            <div class="responsive-table"><table><thead><tr><th>Submitted</th><th>Plan</th><th>Method</th><th>Amount</th><th>Reference</th><th>Status</th></tr></thead><tbody>{% for item in subscription_requests %}<tr><td>{{ item.created_at|date:'M j, Y g:i A' }}</td><td>{{ item.plan }}</td><td>{{ item.get_payment_method_display }}</td><td>₱{{ item.amount|floatformat:2 }}</td><td>{{ item.payment_reference|default:'—' }}</td><td><span class="status {% if item.status == 'Approved' %}good{% else %}low{% endif %}">{{ item.get_status_display }}</span></td></tr>{% empty %}<tr><td colspan="6" class="empty-table">No payment requests yet.</td></tr>{% endfor %}</tbody></table></div>
+        </div>
+    </section>
+    {% if store.is_pro %}<section class="card settings-card schedule-card"><div class="settings-heading"><span class="quick-icon violet">✉</span><div><h3>Scheduled report emails</h3><p>Send a daily or weekly store summary to registered recipients</p></div></div><div class="schedule-list">{% for schedule in report_schedules %}<div><span><strong>{{ schedule.recipient_email }}</strong><small>{{ schedule.frequency }} · {% if schedule.last_sent_at %}last sent {{ schedule.last_sent_at|date:'M j, g:i A' }}{% else %}not sent yet{% endif %}</small></span><form method="post" action="{% url 'remove_report_schedule' schedule.pk %}">{% csrf_token %}<button class="team-remove">Remove</button></form></div>{% empty %}<p class="empty-small">No scheduled recipients yet.</p>{% endfor %}</div><form method="post" class="schedule-form">{% csrf_token %}<input type="hidden" name="action" value="schedule"><label>Email{{ schedule_form.recipient_email }}{{ schedule_form.recipient_email.errors }}</label><label>Frequency{{ schedule_form.frequency }}{{ schedule_form.frequency.errors }}</label><button class="primary">Add schedule</button></form></section>{% endif %}
+</div>
+
+<div class="modal-backdrop" id="teamModal" aria-hidden="true">
+    <form class="modal" method="post">{% csrf_token %}<input type="hidden" name="action" value="team"><div class="modal-head"><div><span class="eyebrow">{{ store.active_plan }} team</span><h2>Add staff access</h2></div><button type="button" data-modal-close aria-label="Close">×</button></div>
+        {% if team_form.non_field_errors %}<div class="form-error">{{ team_form.non_field_errors }}</div>{% endif %}
+        <p class="modal-note">Use a new username to create an account, or an existing username to assign that person to this store. Existing users keep their current password.</p>
+        <label>Username{{ team_form.username }}{{ team_form.username.errors }}</label>
+        <div class="form-row"><label>First name{{ team_form.first_name }}{{ team_form.first_name.errors }}</label><label>Last name{{ team_form.last_name }}{{ team_form.last_name.errors }}</label></div>
+        <label>Email{{ team_form.email }}{{ team_form.email.errors }}</label>
+        <label>Access level{{ team_form.access_level }}{{ team_form.access_level.errors }}<small>{{ team_form.access_level.help_text }}</small></label>
+        <div class="form-row"><label>Temporary password{{ team_form.password }}{{ team_form.password.errors }}</label><label>Confirm temporary password{{ team_form.password_confirm }}{{ team_form.password_confirm.errors }}</label></div>
+        <p class="modal-note">New users must replace the temporary password immediately after their first successful sign-in.</p>
+        <div class="modal-actions"><button type="button" class="secondary" data-modal-close>Cancel</button><button class="primary">Add staff</button></div>
+    </form>
+</div>
+{% if team_form.errors %}<script>window.addEventListener('DOMContentLoaded',()=>window.POSitive.openModal('teamModal'));</script>{% endif %}
+{% endblock %}

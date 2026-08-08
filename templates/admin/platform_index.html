@@ -1,0 +1,58 @@
+{% extends "admin/index.html" %}
+{% block content_title %}{% endblock %}
+{% block content %}
+<section class="platform-overview">
+    <div class="platform-heading">
+        <div><span>Platform overview</span><h1>Stores & subscriptions</h1><p>Create businesses, control access, and catch subscription issues from one place.</p></div>
+        <a class="platform-add" href="{% url 'admin:pos_storesettings_add' %}">Add store</a>
+    </div>
+
+    <div class="platform-stats">
+        <article><span>All stores</span><strong>{{ store_count }}</strong></article>
+        <article class="active"><span>Active</span><strong>{{ active_store_count }}</strong></article>
+        <article class="warning"><span>Expired</span><strong>{{ expired_store_count }}</strong></article>
+        <article class="muted"><span>Suspended</span><strong>{{ suspended_store_count }}</strong></article>
+    </div>
+
+    <article class="expiry-widget">
+        <div class="platform-card-head"><div><h2>Subscriptions ending within 5 days</h2><p>Review these stores before their access expires.</p></div><span>{{ expiring_store_rows|length }} due</span></div>
+        {% if expiring_store_rows %}
+        <div class="expiry-list">
+            {% for row in expiring_store_rows %}
+            <a href="{% url 'admin:pos_storesettings_change' row.store.pk %}">
+                <span class="store-initial">{{ row.store.business_name|slice:':2'|upper }}</span>
+                <span><strong>{{ row.store.business_name }}</strong><small>{{ row.store.store_id }} · {{ row.store.active_plan }}</small></span>
+                <b>{% if row.store.days_until_expiry == 0 %}Ends today{% else %}{{ row.store.days_until_expiry }} day{{ row.store.days_until_expiry|pluralize }} left{% endif %}</b>
+            </a>
+            {% endfor %}
+        </div>
+        {% else %}<p class="platform-empty">No subscriptions expire in the next five days.</p>{% endif %}
+    </article>
+
+    <article class="stores-widget">
+        <div class="platform-card-head stores-card-head"><div><h2>All stores</h2><p>Current administrator, subscription, and staff-seat status.</p></div><span id="visibleStoreCount" class="neutral-count">{{ store_count }} shown</span></div>
+        <div class="platform-controls">
+            <label class="store-search"><span class="sr-only">Search stores</span><input id="storeSearch" type="search" placeholder="Search store, ID, or administrator" autocomplete="off"></label>
+            <label class="store-filter"><span>Status</span><select id="storeStatusFilter"><option value="all">All statuses</option><option value="active">Active</option><option value="expired">Expired</option><option value="suspended">Suspended</option></select></label>
+        </div>
+        <div class="platform-table-wrap"><table class="platform-table"><thead><tr><th>Store</th><th>Administrator</th><th>Plan</th><th>Subscription end</th><th>Staff</th><th>Status</th></tr></thead><tbody>
+            {% for row in store_rows %}<tr class="store-row" data-status="{{ row.store.subscription_status|lower }}" data-search="{{ row.store.business_name|lower }} {{ row.store.store_id|lower }} {% if row.administrator %}{{ row.administrator.username|lower }} {{ row.administrator.email|lower }}{% endif %}">
+                <td><a class="store-name-link" href="{% url 'admin:pos_storesettings_change' row.store.pk %}"><span class="store-initial">{{ row.store.business_name|slice:':2'|upper }}</span><span><strong>{{ row.store.business_name }}</strong><small>{{ row.store.store_id }}</small></span></a></td>
+                <td>{% if row.administrator %}{{ row.administrator.get_full_name|default:row.administrator.username }}<small>@{{ row.administrator.username }}</small>{% else %}<span class="missing">Not assigned</span>{% endif %}</td>
+                <td>{{ row.store.active_plan }}</td>
+                <td>{{ row.store.subscription_end|date:'M j, Y'|default:'No end date' }}</td>
+                <td>{{ row.store.active_staff_count }} / {{ row.store.staff_limit }}</td>
+                <td><div class="status-action"><span class="platform-status {{ row.store.subscription_status|lower }}">{{ row.store.subscription_status }}</span><a href="{% url 'admin:pos_storesettings_change' row.store.pk %}">Edit</a></div></td>
+            </tr>{% empty %}<tr><td colspan="6" class="platform-empty">No stores have been added yet.</td></tr>{% endfor %}
+            <tr id="filteredStoreEmpty" hidden><td colspan="6" class="platform-empty">No stores match your search and status filter.</td></tr>
+        </tbody></table></div>
+    </article>
+
+    <div class="management-grid">
+        <article><span class="management-icon">S</span><div><h2>Businesses</h2><p>Create stores and maintain plans, dates, status, and administrators.</p><nav><a href="{% url 'admin:pos_storesettings_changelist' %}">All stores</a><a href="{% url 'admin:pos_storesettings_add' %}">Add store</a></nav></div></article>
+        <article><span class="management-icon">A</span><div><h2>Account access</h2><p>Review user accounts and the stores explicitly assigned to each person.</p><nav><a href="{% url 'admin:auth_user_changelist' %}">Users</a><a href="{% url 'admin:pos_storemembership_changelist' %}">Assignments</a></nav></div></article>
+        <article><span class="management-icon">O</span><div><h2>Operations</h2><p>Audit store-scoped products and completed sales when support is needed.</p><nav><a href="{% url 'admin:pos_product_changelist' %}">Products</a><a href="{% url 'admin:pos_sale_changelist' %}">Sales</a></nav></div></article>
+        <article><span class="management-icon">R</span><div><h2>Requests</h2><p>Review subscription requests submitted through existing store workflows.</p><nav><a href="{% url 'admin:pos_subscriptionrequest_changelist' %}">Subscription requests</a></nav></div></article>
+    </div>
+</section>
+{% endblock %}

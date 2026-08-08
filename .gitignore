@@ -9,4 +9,5 @@ staticfiles/
 
 .vercel
 .env*
+.codex-audit/
 .chrome-audit-profile/

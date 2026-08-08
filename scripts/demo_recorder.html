@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>POSitive 60-second product tour recorder</title><style>html,body{margin:0;background:#071711;color:#fff;font-family:"Segoe UI",Arial,sans-serif}canvas{display:block;width:100vw;height:auto}</style></head>
+<body><canvas id="tour" width="1280" height="720"></canvas>
+<script>
+const canvas = document.getElementById('tour');
+const context = canvas.getContext('2d');
+const query = new URLSearchParams(location.search);
+const recordingDuration = Math.max(1000, Number(query.get('duration') || 60000));
+const scenes = [
+  { image:'../static/pos/images/product/dashboard.webp', eyebrow:'LIVE STORE OVERVIEW', title:'Start every day with a clear view', copy:'See sales, transactions, average orders, low stock, and recent activity in one place.' },
+  { image:'../static/pos/images/product/checkout.webp', eyebrow:'FAST CHECKOUT', title:'Move from product to payment quickly', copy:'Search or scan products, keep the order visible, and validate stock before completing a sale.' },
+  { image:'../static/pos/images/product/inventory.webp', eyebrow:'SMART INVENTORY', title:'Know what is in stock and what needs attention', copy:'Manage cafe, grocery, fashion, gadget, pet, hardware, cosmetics, and general-merchandise products.' },
+  { image:'../static/pos/images/product/reports.webp', eyebrow:'REPORTS AND AUDIT', title:'Turn every transaction into a useful decision', copy:'Review revenue, profit, payments, top products, staff performance, and exportable audit activity.' },
+];
+const loadedImages = [];
+window.recordingState = 'loading';
+
+function loadImage(source) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = reject;
+    image.src = source;
+  });
+}
+
+function roundedRect(x,y,width,height,radius) {
+  context.beginPath();
+  context.roundRect(x,y,width,height,radius);
+}
+
+function wrapText(text,x,y,maxWidth,lineHeight) {
+  const words=text.split(' '); let line=''; let cursor=y;
+  for (const word of words) {
+    const test=`${line}${word} `;
+    if (context.measureText(test).width > maxWidth && line) { context.fillText(line.trim(),x,cursor); line=`${word} `; cursor+=lineHeight; }
+    else line=test;
+  }
+  context.fillText(line.trim(),x,cursor);
+}
+
+function drawCover(image,x,y,width,height,zoom,offsetX) {
+  const scale=Math.max(width/image.width,height/image.height)*zoom;
+  const sourceWidth=width/scale;
+  const sourceHeight=height/scale;
+  const sourceX=Math.max(0,Math.min(image.width-sourceWidth,(image.width-sourceWidth)*(0.35+offsetX)));
+  const sourceY=Math.max(0,(image.height-sourceHeight)*0.12);
+  context.drawImage(image,sourceX,sourceY,sourceWidth,sourceHeight,x,y,width,height);
+}
+
+function render(elapsed) {
+  const total=recordingDuration;
+  const sceneLength=total/scenes.length;
+  const index=Math.min(scenes.length-1,Math.floor(elapsed/sceneLength));
+  const local=(elapsed-index*sceneLength)/sceneLength;
+  const scene=scenes[index];
+  const image=loadedImages[index];
+  context.fillStyle='#071711'; context.fillRect(0,0,1280,720);
+  const gradient=context.createRadialGradient(1080,80,20,1080,80,720);
+  gradient.addColorStop(0,'rgba(39,190,139,.27)'); gradient.addColorStop(1,'rgba(7,23,17,0)');
+  context.fillStyle=gradient; context.fillRect(0,0,1280,720);
+  context.save(); roundedRect(45,117,1190,565,22); context.clip();
+  drawCover(image,45,117,1190,565,1.015+local*.018,(local-.5)*.06);
+  const shade=context.createLinearGradient(0,117,0,470); shade.addColorStop(0,'rgba(5,20,15,.88)'); shade.addColorStop(.7,'rgba(5,20,15,.05)');
+  context.fillStyle=shade; context.fillRect(45,117,1190,400); context.restore();
+  context.strokeStyle='rgba(185,242,220,.32)'; context.lineWidth=2; roundedRect(45,117,1190,565,22); context.stroke();
+
+  context.fillStyle='#6ce0b5'; context.font='800 14px "Segoe UI",Arial'; context.letterSpacing='2px'; context.fillText(scene.eyebrow,80,164); context.letterSpacing='0px';
+  context.fillStyle='#fff'; context.font='800 38px "Segoe UI",Arial'; context.fillText(scene.title,80,211);
+  context.fillStyle='rgba(235,248,243,.9)'; context.font='500 20px "Segoe UI",Arial'; wrapText(scene.copy,80,247,820,28);
+
+  context.fillStyle='#fff'; context.font='800 27px "Segoe UI",Arial'; context.fillText('POS',48,69); context.fillStyle='#48d2a0'; context.fillText('itive!',99,69);
+  context.fillStyle='rgba(226,244,237,.76)'; context.font='600 14px "Segoe UI",Arial'; context.fillText('POINT OF SALE',49,91);
+  context.textAlign='right'; context.fillStyle='rgba(226,244,237,.85)'; context.font='600 16px "Segoe UI",Arial'; context.fillText(`${index+1} / ${scenes.length}`,1232,72); context.textAlign='left';
+
+  context.fillStyle='rgba(255,255,255,.18)'; roundedRect(45,700,1190,6,6); context.fill();
+  context.fillStyle='#4bd4a2'; roundedRect(45,700,1190*Math.min(1,elapsed/total),6,6); context.fill();
+}
+
+async function startRecording() {
+  loadedImages.push(...await Promise.all(scenes.map(scene => loadImage(scene.image))));
+  render(0);
+  if (!query.has('record')) { window.recordingState='preview'; return; }
+  const stream=canvas.captureStream(30);
+  const mimeTypes=['video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm'];
+  const mimeType=mimeTypes.find(type => MediaRecorder.isTypeSupported(type)) || '';
+  const recorder=new MediaRecorder(stream,{mimeType,videoBitsPerSecond:1800000});
+  const chunks=[]; recorder.ondataavailable=event => { if (event.data.size) chunks.push(event.data); };
+  recorder.onstop=async() => {
+    const blob=new Blob(chunks,{type:recorder.mimeType || 'video/webm'});
+    window.recordingState='uploading';
+    try {
+      const response=await fetch('/__capture',{method:'POST',headers:{'Content-Type':'video/webm'},body:blob});
+      if (!response.ok) throw new Error(`capture server returned ${response.status}`);
+      window.recordingBytes=blob.size; window.recordingState='complete';
+    } catch (error) { window.recordingState=`error: ${error.message}`; }
+  };
+  window.recordingState='recording';
+  const started=performance.now(); recorder.start(1000);
+  const frameTimer=setInterval(() => {
+    const now=performance.now();
+    const elapsed=Math.min(recordingDuration,now-started); render(elapsed);
+    if (elapsed >= recordingDuration) { clearInterval(frameTimer); render(recordingDuration); recorder.stop(); }
+  },33);
+}
+startRecording().catch(error => { window.recordingState=`error: ${error.message}`; });
+</script></body></html>

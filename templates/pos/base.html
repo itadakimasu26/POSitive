@@ -1,0 +1,96 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#10251f">
+    <title>{% block title %}POSitive!{% endblock %}</title>
+    <script>try{document.documentElement.dataset.theme=localStorage.getItem('positive-theme')||'light'}catch(e){document.documentElement.dataset.theme='light'}</script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{% static 'pos/css/app.css' %}">
+</head>
+<body>
+<div class="app-shell">
+    <aside class="sidebar" id="sidebar">
+        <a class="brand" href="{% url 'dashboard' %}">
+            {% include 'includes/brand_logo.html' %}
+        </a>
+
+        {% if request.available_memberships|length > 1 %}
+        <form class="store-chip store-switcher" method="post" action="{% url 'switch_store' %}">
+            {% csrf_token %}<input type="hidden" name="next" value="{{ request.path }}">
+            <span class="store-avatar">{{ store.business_name|slice:':2'|upper }}</span>
+            <label><span class="sr-only">Current store</span><select name="store_id" aria-label="Current store" onchange="this.form.submit()">{% for membership in request.available_memberships %}<option value="{{ membership.store_id }}" {% if membership.store_id == store.pk %}selected{% endif %}>{{ membership.store.business_name }}</option>{% endfor %}</select><small>Store ID: {{ store.store_id }}</small></label>
+            <i class="online-dot {% if not store.is_subscription_active %}offline{% endif %}" title="{{ store.subscription_status }}"></i>
+        </form>
+        {% else %}
+        <div class="store-chip">
+            <span class="store-avatar">{{ store.business_name|slice:':2'|upper }}</span>
+            <span><strong>{{ store.business_name }}</strong><small>Store ID: {{ store.store_id }}</small></span>
+            <i class="online-dot {% if not store.is_subscription_active %}offline{% endif %}" title="{{ store.subscription_status }}"></i>
+        </div>
+        {% endif %}
+
+        <nav class="nav-list" aria-label="Main navigation">
+            <p class="nav-caption">Workspace</p>
+            <a href="{% url 'dashboard' %}" class="{% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}"><span>⌂</span>Overview</a>
+            <a href="{% url 'sell' %}" class="{% if request.resolver_match.url_name == 'sell' or request.resolver_match.url_name == 'receipt' %}active{% endif %}"><span>↗</span>Sell</a>
+            {% if request.store_membership.can_manage_inventory %}
+            <a href="{% url 'products' %}" class="{% if request.resolver_match.url_name == 'products' %}active{% endif %}"><span>◇</span>Products</a>
+            {% endif %}
+            {% if request.store_membership.can_view_reports %}
+            <a href="{% url 'reports' %}" class="{% if request.resolver_match.url_name == 'reports' %}active{% endif %}"><span>▥</span>Reports</a>
+            {% endif %}
+            {% if request.store_membership.is_administrator %}
+            <a href="{% url 'settings' %}" class="{% if request.resolver_match.url_name == 'settings' %}active{% endif %}"><span>⚙</span>Settings</a>
+            {% endif %}
+            {% if store.is_pro %}
+            <p class="nav-caption pro-caption">Pro operations</p>
+            {% if request.store_membership.is_administrator %}<a href="{% url 'multi_store_dashboard' %}" class="{% if request.resolver_match.url_name == 'multi_store_dashboard' %}active{% endif %}"><span>◫</span>Multi-store</a>{% endif %}
+            {% if request.store_membership.can_manage_customers %}<a href="{% url 'customers' %}" class="{% if request.resolver_match.url_name == 'customers' %}active{% endif %}"><span>♧</span>Customers</a>{% endif %}
+            {% if request.store_membership.can_manage_inventory %}<a href="{% url 'pro_inventory' %}" class="{% if request.resolver_match.url_name == 'pro_inventory' %}active{% endif %}"><span>⇄</span>Stock control</a>{% endif %}
+            <a href="{% url 'cash_register' %}" class="{% if request.resolver_match.url_name == 'cash_register' %}active{% endif %}"><span>▣</span>Cash register</a>
+            {% if request.store_membership.can_manage_purchasing %}<a href="{% url 'purchasing' %}" class="{% if request.resolver_match.url_name == 'purchasing' %}active{% endif %}"><span>▤</span>Purchasing</a>{% endif %}
+            {% endif %}
+            {% if request.user.is_superuser %}<a href="{% url 'admin:index' %}"><span>♙</span>Administration</a>{% endif %}
+        </nav>
+
+        <div class="plan-mini">
+            <div><span>{{ store.active_plan|upper }} PLAN</span><strong>{{ store.subscription_status }}</strong></div>
+            <div class="progress"><i></i></div>
+            {% if request.store_membership.is_administrator %}<a href="{% url 'settings' %}#subscription">View subscription</a>{% endif %}
+        </div>
+
+        <div class="profile-card">
+            <span class="profile-avatar">{{ request.user.username|slice:':2'|upper }}</span>
+            <span><strong>{{ request.user.get_full_name|default:request.user.username }}</strong><small>{% if request.user.is_superuser %}Administrator{% elif request.store_membership.is_administrator %}Store administrator{% else %}{{ request.store_membership.get_access_level_display }}{% endif %}</small></span>
+            <form action="{% url 'logout' %}" method="post">{% csrf_token %}<button class="sidebar-logout" title="Log out of POSitive!">Log out</button></form>
+        </div>
+    </aside>
+
+    <button class="menu-scrim" id="menuScrim" aria-label="Close menu"></button>
+
+    <main class="main-content">
+        <header class="topbar">
+            <button class="menu-button" id="menuButton" type="button" aria-label="Open menu" aria-controls="sidebar" aria-expanded="false">☰</button>
+            <div class="top-title"><p>{% block section %}Workspace{% endblock %}</p><h1>{% block page_title %}POSitive!{% endblock %}</h1></div>
+            <div class="top-actions"><span class="sync-state"><i></i> {{ store.subscription_status }}</span><button class="theme-toggle" id="themeToggle" type="button" aria-label="Switch to dark mode" title="Switch color theme"><span>☾</span></button>{% if store.is_subscription_active %}<a class="primary compact" href="{% url 'sell' %}">＋ New sale</a>{% endif %}</div>
+        </header>
+
+        <div class="page-wrap">
+            {% if messages %}
+                <div class="messages">
+                    {% for message in messages %}<div class="message {{ message.tags }}"><span>{% if message.tags == 'error' %}!{% else %}✓{% endif %}</span>{{ message }}<button type="button" aria-label="Dismiss">×</button></div>{% endfor %}
+                </div>
+            {% endif %}
+            {% block content %}{% endblock %}
+        </div>
+    </main>
+</div>
+<script src="{% static 'pos/js/app.js' %}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

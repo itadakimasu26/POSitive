@@ -1,0 +1,12 @@
+{% extends 'pos/base.html' %}
+{% block title %}Customers — POSitive!{% endblock %}
+{% block section %}Pro operations{% endblock %}
+{% block page_title %}Customers & loyalty{% endblock %}
+{% block content %}
+<div class="stack">
+    <section class="section-title product-title"><div><span class="eyebrow">Customer relationships</span><h2>Profiles and loyalty points</h2><p>Attach customers at checkout and reward repeat purchases automatically.</p></div><button class="primary" data-modal-open="customerModal">＋ Add customer</button></section>
+    <section class="card table-card"><div class="table-toolbar"><form class="search-box compact-search" method="get">⌕<input name="q" value="{{ query }}" placeholder="Search customers" aria-label="Search customers"></form><span class="table-note">1 point is earned per ₱100 spent</span></div><div class="responsive-table"><table><thead><tr><th>Customer</th><th>Contact</th><th>Lifetime spend</th><th>Points</th><th>Joined</th></tr></thead><tbody>{% for customer in customers %}<tr><td><strong>{{ customer.name }}</strong></td><td>{{ customer.email|default:customer.phone|default:'—' }}</td><td>₱{{ customer.total_spent|floatformat:2 }}</td><td><span class="status good">{{ customer.loyalty_points }}</span></td><td>{{ customer.created_at|date:'M j, Y' }}</td></tr>{% empty %}<tr><td colspan="5" class="empty-table">No customers match your search.</td></tr>{% endfor %}</tbody></table></div></section>
+</div>
+<div class="modal-backdrop" id="customerModal" aria-hidden="true"><form class="modal" method="post">{% csrf_token %}<div class="modal-head"><div><span class="eyebrow">Pro loyalty</span><h2>Add customer</h2></div><button type="button" data-modal-close aria-label="Close">×</button></div>{{ form.non_field_errors }}<label>Name{{ form.name }}{{ form.name.errors }}</label><label>Email{{ form.email }}{{ form.email.errors }}</label><label>Phone{{ form.phone }}{{ form.phone.errors }}</label><div class="modal-actions"><button type="button" class="secondary" data-modal-close>Cancel</button><button class="primary">Save customer</button></div></form></div>
+{% if form.errors %}<script>window.addEventListener('DOMContentLoaded',()=>window.POSitive.openModal('customerModal'));</script>{% endif %}
+{% endblock %}

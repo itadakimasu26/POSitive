@@ -1,0 +1,12 @@
+[project]
+name = "positive-pos"
+version = "1.0.0"
+requires-python = ">=3.12,<3.15"
+dependencies = [
+    "Django==5.2.17",
+    "dj-database-url>=2.3,<4",
+    "psycopg[binary]>=3.2,<4",
+]
+
+[tool.vercel.scripts]
+build = 'if [ -n "$DATABASE_URL" ]; then python manage.py migrate --noinput; fi'

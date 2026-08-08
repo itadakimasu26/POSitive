@@ -1,0 +1,14 @@
+.venv/
+**/__pycache__/
+*.py[cod]
+db.sqlite3
+staticfiles/
+.env
+.env.*
+!.env.example
+.codex-audit/
+.codex-live-audit/
+.codex-visual-audit.mjs
+.codex-*.mjs
+.chrome-audit-profile/
+.chrome-live-audit-profile/

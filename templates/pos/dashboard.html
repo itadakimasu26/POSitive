@@ -1,0 +1,39 @@
+{% extends 'pos/base.html' %}
+{% block title %}Overview — POSitive!{% endblock %}
+{% block section %}Overview{% endblock %}
+{% block page_title %}Good day, {{ request.user.first_name|default:request.user.username }}!{% endblock %}
+{% block content %}
+<div class="stack">
+    <section class="welcome-strip"><div><span class="eyebrow">{% now "l, F j" %}</span><h2>Here’s how {{ store.business_name }} is doing.</h2></div>{% if request.store_membership.is_administrator %}<a class="secondary" href="{% url 'reports' %}">View full report →</a>{% endif %}</section>
+    {% if not store.is_subscription_active %}<div class="message-banner warning"><strong>{{ store.subscription_status }} subscription</strong><span>Sales and inventory changes are unavailable. Please contact POSitive! support to restore access.</span></div>{% endif %}
+    <section class="stat-grid">
+        <article class="stat-card"><span class="stat-icon green">↗</span><p>Sales today</p><strong>₱{{ today_total|floatformat:2 }}</strong><small class="positive">Live from your database</small></article>
+        <article class="stat-card"><span class="stat-icon blue">▤</span><p>Transactions</p><strong>{{ today_count }}</strong><small>Completed today</small></article>
+        <article class="stat-card"><span class="stat-icon violet">◷</span><p>Average order</p><strong>₱{{ average_order|floatformat:2 }}</strong><small>Today’s average</small></article>
+        <article class="stat-card"><span class="stat-icon orange">!</span><p>Low stock</p><strong>{% if store.low_stock_alerts %}{{ low_stock }}{% else %}—{% endif %}</strong><small class="attention">{% if store.low_stock_alerts %}Needs your attention{% else %}Alerts disabled{% endif %}</small></article>
+    </section>
+    <section class="dashboard-grid">
+        <article class="card sales-card">
+            <div class="card-head"><div><h3>Sales overview</h3><p>Revenue over the last 7 days</p></div><span class="pill">This week</span></div>
+            <div class="chart-total"><strong>₱{{ week_total|floatformat:2 }}</strong><span>7-day total</span></div>
+            <div class="bar-chart">
+                {% for point in chart_points %}<div class="bar-column"><div style="height:{{ point.height }}%" title="₱{{ point.value|floatformat:2 }}"></div><small>{{ point.label }}</small></div>{% endfor %}
+            </div>
+        </article>
+        <article class="card quick-card">
+            <div class="card-head"><div><h3>Quick actions</h3><p>Keep things moving</p></div></div>
+            {% if store.is_subscription_active %}<a href="{% url 'sell' %}"><span class="quick-icon mint">↗</span><span><strong>Start a sale</strong><small>Open the checkout</small></span><b>›</b></a>{% endif %}
+            {% if request.store_membership.is_administrator %}<a href="{% url 'products' %}#new-product"><span class="quick-icon blue">＋</span><span><strong>Add a product</strong><small>Update your catalog</small></span><b>›</b></a>
+            <a href="{% url 'reports' %}"><span class="quick-icon amber">▥</span><span><strong>View reports</strong><small>See sales performance</small></span><b>›</b></a>{% endif %}
+        </article>
+        <article class="card recent-card">
+            <div class="card-head"><div><h3>Recent transactions</h3><p>Latest completed orders</p></div><a href="{% url 'reports' %}">View all</a></div>
+            {% for sale in recent_sales %}<a class="transaction" href="{% url 'receipt' sale.pk %}"><span class="mini-avatar">{{ sale.user.username|slice:':2'|upper }}</span><span><strong>{{ sale.receipt_number }}</strong><small>{{ sale.created_at|date:'g:i A' }}</small></span><span class="method">{{ sale.payment_method }}</span><strong>₱{{ sale.total|floatformat:2 }}</strong></a>{% empty %}<div class="empty-small">Your completed sales will appear here.</div>{% endfor %}
+        </article>
+        <article class="card stock-card">
+            <div class="card-head"><div><h3>Stock alerts</h3><p>{% if store.low_stock_alerts %}{{ low_stock }} products running low{% else %}Alerts are turned off{% endif %}</p></div>{% if request.store_membership.is_administrator %}<a href="{% url 'products' %}">Manage</a>{% endif %}</div>
+            {% if store.low_stock_alerts %}{% for product in low_products %}<div class="stock-item"><span>{{ product.emoji }}</span><div><strong>{{ product.name }}</strong><div class="stock-progress"><i style="width:{% widthratio product.stock product.low_stock_threshold 100 %}%"></i></div></div><b>{{ product.stock }} left</b></div>{% empty %}<div class="empty-small">All products have healthy stock levels.</div>{% endfor %}{% else %}<div class="empty-small">Enable low-stock alerts in Settings to monitor reorder levels.</div>{% endif %}
+        </article>
+    </section>
+</div>
+{% endblock %}

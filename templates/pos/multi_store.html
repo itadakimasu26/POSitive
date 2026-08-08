@@ -1,0 +1,12 @@
+{% extends 'pos/base.html' %}
+{% block title %}Multi-store overview — POSitive!{% endblock %}
+{% block section %}Pro operations{% endblock %}
+{% block page_title %}Multi-store overview{% endblock %}
+{% block content %}
+<div class="stack">
+    <section class="section-title"><div><span class="eyebrow">Consolidated performance · last 30 days</span><h2>Every Pro store in one view</h2><p>Compare revenue, orders, inventory, and attention items without switching stores.</p></div></section>
+    <section class="stat-grid"><article class="stat-card"><p>Pro stores</p><strong>{{ store_count }}</strong><small>Assigned to your login</small></article><article class="stat-card"><p>Combined revenue</p><strong>₱{{ total_revenue|floatformat:2 }}</strong><small>Completed sales</small></article><article class="stat-card"><p>Combined orders</p><strong>{{ total_orders }}</strong><small>Last 30 days</small></article></section>
+    <section class="card table-card"><div class="card-head table-heading"><div><h3>Store comparison</h3><p>Live tenant-scoped totals</p></div></div><div class="responsive-table"><table><thead><tr><th>Store</th><th>Revenue</th><th>Orders</th><th>Inventory units</th><th>Low stock</th><th>Status</th></tr></thead><tbody>{% for row in rows %}<tr><td><strong>{{ row.store.business_name }}</strong><small>{{ row.store.store_id }}</small></td><td>₱{{ row.revenue|floatformat:2 }}</td><td>{{ row.orders }}</td><td>{{ row.inventory_units }}</td><td>{{ row.low_stock }}</td><td><span class="status {% if row.store.is_subscription_active %}good{% else %}low{% endif %}">{{ row.store.subscription_status }}</span></td></tr>{% empty %}<tr><td colspan="6" class="empty-table">No Pro stores are assigned.</td></tr>{% endfor %}</tbody></table></div></section>
+    <section class="card activity-card"><div class="card-head"><div><h3>Recent operational activity</h3><p>Actions recorded across your Pro stores</p></div></div><div class="activity-list">{% for event in recent_activity %}<div><span class="quick-icon mint">{{ event.store.store_id|slice:':1' }}</span><span><strong>{{ event.description }}</strong><small>{{ event.store.business_name }} · {{ event.actor.username|default:'System' }} · {{ event.created_at|date:'M j, g:i A' }}</small></span></div>{% empty %}<p class="empty-small">Operational activity will appear here.</p>{% endfor %}</div></section>
+</div>
+{% endblock %}

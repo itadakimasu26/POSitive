@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>POSitive! Feature and Plan Guide</title>
+<style>
+@page { size: Letter; margin: 0; }
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; background: #dfe8e4; color: #15241f; font-family: "Segoe UI", Arial, sans-serif; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.page { position: relative; width: 8.5in; height: 11in; margin: 0 auto 18px; padding: .56in .58in .54in; overflow: hidden; background: #fbfdfc; page-break-after: always; }
+.page:last-child { page-break-after: auto; }
+.logo { display: block; width: 2.15in; height: auto; margin: 0 0 .22in; }
+.eyebrow { display: block; margin-bottom: .09in; color: #0b8f68; font-size: 10px; font-weight: 800; letter-spacing: 1.4px; text-transform: uppercase; }
+h1, h2, h3, p { margin-top: 0; }
+h1 { max-width: 6.9in; margin-bottom: .2in; font-size: 42px; line-height: 1.04; letter-spacing: -1.3px; }
+h2 { margin-bottom: .13in; font-size: 27px; line-height: 1.12; letter-spacing: -.5px; }
+h3 { margin-bottom: .06in; font-size: 16px; line-height: 1.2; }
+p, li { font-size: 12.5px; line-height: 1.5; }
+.lead { max-width: 6.4in; margin-bottom: .3in; color: #5b6b65; font-size: 16px; line-height: 1.55; }
+.hero-panel { padding: .28in; border: 1px solid #cfe2db; border-radius: 18px; background: #eaf7f2; }
+.price-row { display: grid; grid-template-columns: 1fr 1fr; gap: .14in; margin: .18in 0; }
+.price-card { padding: .19in; border: 1px solid #d6e5df; border-radius: 14px; background: #fff; }
+.price-card.pro { border: 2px solid #19a579; }
+.price-card span { color: #0b8f68; font-size: 9px; font-weight: 800; letter-spacing: 1px; }
+.price-card strong { display: block; margin: .07in 0 .04in; font-size: 27px; line-height: 1; }
+.price-card small { color: #60716a; font-size: 11px; }
+.checks { display: grid; grid-template-columns: 1fr 1fr; gap: .08in .15in; margin: .16in 0 0; padding: 0; list-style: none; }
+.checks li { position: relative; padding-left: .2in; color: #45564f; }
+.checks li::before { content: "✓"; position: absolute; left: 0; color: #0b8f68; font-weight: 900; }
+.footer { position: absolute; right: .58in; bottom: .28in; left: .58in; display: flex; justify-content: space-between; padding-top: .1in; border-top: 1px solid #dbe6e2; color: #71807b; font-size: 9px; }
+.plans { display: grid; grid-template-columns: 1fr 1fr; gap: .16in; margin-top: .18in; }
+.plan { min-height: 7.45in; padding: .24in; border: 1px solid #d6e3de; border-radius: 17px; background: #fff; }
+.plan.pro { border: 2px solid #20a77b; box-shadow: 0 12px 30px rgba(15, 113, 83, .08); }
+.plan .tag { display: inline-block; padding: 5px 8px; border-radius: 30px; background: #e7f7f1; color: #087656; font-size: 9px; font-weight: 800; letter-spacing: 1px; }
+.plan .price { display: block; margin: .11in 0 .04in; font-size: 35px; line-height: 1; }
+.plan .price small { color: #687770; font-size: 12px; font-weight: 600; }
+.plan > p { min-height: .56in; color: #5f6e68; }
+.feature-list { margin: .14in 0 0; padding: 0; list-style: none; }
+.feature-list li { position: relative; margin: .09in 0; padding: 0 0 .09in .22in; border-bottom: 1px solid #edf2f0; }
+.feature-list li::before { content: "✓"; position: absolute; left: 0; color: #0b8f68; font-weight: 900; }
+.note { margin-top: .16in; padding: .12in; border-radius: 10px; background: #f0f5f3; color: #57675f; font-size: 11px; }
+.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: .11in; margin: .17in 0 .23in; }
+.tile { padding: .15in; border: 1px solid #dbe7e2; border-radius: 12px; background: #fff; }
+.tile b { display: block; margin-bottom: 5px; font-size: 12px; }
+.tile span { color: #63726c; font-size: 10.5px; line-height: 1.38; }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: .2in; }
+.info { padding: .18in; border-radius: 14px; background: #132e25; color: #fff; }
+.info h3 { color: #67dfb2; }
+.info p, .info li { color: #c2d3cd; font-size: 11px; }
+.info ul { margin: .1in 0 0; padding-left: .2in; }
+.contact { margin-top: .18in; padding: .17in; border: 1px solid #cfe3db; border-radius: 13px; background: #edf8f4; }
+.contact p { margin: .04in 0; font-size: 11px; }
+</style>
+</head>
+<body>
+<section class="page">
+  <img class="logo" src="../static/pos/images/positive-logo-redesigned.png" alt="POSitive!">
+  <span class="eyebrow">Feature and plan guide</span>
+  <h1>Simple at checkout.<br>Clear everywhere else.</h1>
+  <p class="lead">A cloud-based point of sale for cafes, minimarts, boutiques, gadget shops, pet stores, hardware stores, and personal-care retailers.</p>
+  <div class="hero-panel">
+    <span class="eyebrow">Start with 30 days free</span>
+    <h2>One workspace for sales, stock, staff, and reports</h2>
+    <p>No payment card is required for the trial. Your store and administrator account are created immediately after signup.</p>
+    <div class="price-row">
+      <div class="price-card"><span>STARTER</span><strong>PHP 399</strong><small>per month · essential single-store workflow</small></div>
+      <div class="price-card pro"><span>PRO</span><strong>PHP 799</strong><small>per month · advanced operations and controls</small></div>
+    </div>
+    <ul class="checks">
+      <li>7-days-a-week local support</li>
+      <li>Cloud-based software</li>
+      <li>Lifetime software updates</li>
+      <li>Full online resources access</li>
+      <li>Remote setup and training</li>
+      <li>Mobile, tablet, and desktop ready</li>
+    </ul>
+  </div>
+  <div class="contact"><h3>Ready to see your workflow?</h3><p>Start a free trial or book a live demo at positive-pos-x.vercel.app</p><p>Email: michaeljohnojoy26@gmail.com · SMS/Viber/WhatsApp: 09640832257</p></div>
+  <div class="footer"><span>POSitive! feature and plan guide</span><span>1 / 3</span></div>
+</section>
+
+<section class="page">
+  <span class="eyebrow">Plans</span>
+  <h2>Choose the controls your operation needs</h2>
+  <p class="lead">Both plans include checkout, products, inventory, receipts, reports, cloud access, updates, and local support.</p>
+  <div class="plans">
+    <article class="plan">
+      <span class="tag">STARTER</span>
+      <strong class="price">PHP 399 <small>/ month</small></strong>
+      <h3>Essential retail POS</h3>
+      <p>For a straightforward store team that needs fast daily operations.</p>
+      <ul class="feature-list">
+        <li>1 store administrator</li>
+        <li>Up to 2 cashier accounts</li>
+        <li>Fast checkout and printable receipts</li>
+        <li>Products, barcodes, and inventory</li>
+        <li>Low-stock alerts and adjustments</li>
+        <li>Standard sales reports</li>
+        <li>Product and report CSV exports</li>
+        <li>Offline-sales recovery template and import</li>
+        <li>Responsive phone, tablet, and desktop UI</li>
+      </ul>
+    </article>
+    <article class="plan pro">
+      <span class="tag">PRO · RECOMMENDED</span>
+      <strong class="price">PHP 799 <small>/ month</small></strong>
+      <h3>Advanced operations</h3>
+      <p>For growing teams that need oversight, deeper inventory, and audit tools.</p>
+      <ul class="feature-list">
+        <li>Up to 3 store administrators and 10 staff</li>
+        <li>Cashier, inventory controller, and manager roles</li>
+        <li>Multi-store overview and custom date reports</li>
+        <li>Stocktakes, transfers, and movement history</li>
+        <li>Continuous daily cash register custody</li>
+        <li>Register history, approvals, and audit export</li>
+        <li>Customers and loyalty</li>
+        <li>Suppliers and purchase orders</li>
+        <li>Bulk product import and scheduled summaries</li>
+        <li>Offline-sales recovery with audit history</li>
+      </ul>
+    </article>
+  </div>
+  <p class="note">Subscriptions paid through Landbank or cash are activated after transaction verification. Current pricing and terms shown inside POSitive! take precedence over an older downloaded copy.</p>
+  <div class="footer"><span>POSitive! feature and plan guide</span><span>2 / 3</span></div>
+</section>
+
+<section class="page">
+  <span class="eyebrow">Fit and requirements</span>
+  <h2>Made for the products local businesses sell</h2>
+  <div class="grid">
+    <div class="tile"><b>Cafes</b><span>Coffee, tea, drinks, pastries, and meals</span></div>
+    <div class="tile"><b>Minimarts</b><span>Grocery, pantry, fresh, frozen, and household</span></div>
+    <div class="tile"><b>Fashion</b><span>Clothing, footwear, and accessories</span></div>
+    <div class="tile"><b>Gadgets</b><span>Devices, mobile accessories, and electronics</span></div>
+    <div class="tile"><b>Pet supplies</b><span>Pet food, care items, and accessories</span></div>
+    <div class="tile"><b>Hardware</b><span>Tools, hardware, and general merchandise</span></div>
+    <div class="tile"><b>Personal care</b><span>Cosmetics, skincare, and personal-care goods</span></div>
+    <div class="tile"><b>Barcode retail</b><span>Search, scan, stock, and product-level reporting</span></div>
+    <div class="tile"><b>Growing groups</b><span>Multiple stores with controlled staff access</span></div>
+  </div>
+  <div class="two">
+    <section class="info"><h3>Hardware</h3><ul><li>Internet-connected phone, tablet, laptop, or desktop</li><li>Current Chrome, Edge, or Safari browser</li><li>10-inch or larger display recommended at checkout</li><li>Optional barcode scanner, receipt printer, and cash drawer</li></ul></section>
+    <section class="info"><h3>Security and continuity</h3><ul><li>HTTPS and hashed passwords</li><li>Role-based, store-scoped access</li><li>CSRF and secure-session protections</li><li>Managed PostgreSQL recovery capabilities</li><li>CSV export for records and audit work</li></ul></section>
+  </div>
+  <div class="contact"><h3>Support and policies</h3><p>Regular support: daily, 9:00 AM–6:00 PM Philippine Time.</p><p>Privacy, terms, cancellation, support, backup, and security information are published on the POSitive! website.</p><p>Messenger: Michael John Ojoy · Email: michaeljohnojoy26@gmail.com</p></div>
+  <div class="footer"><span>POSitive! feature and plan guide</span><span>3 / 3</span></div>
+</section>
+</body>
+</html>

@@ -1,0 +1,31 @@
+{% extends 'pos/base.html' %}
+{% block title %}Cash register — POSitive!{% endblock %}
+{% block section %}Pro operations{% endblock %}
+{% block page_title %}Cash register{% endblock %}
+{% block content %}
+<div class="stack">
+    <section class="section-title"><div><span class="eyebrow">Shared daily till</span><h2>{% if current_session %}Cash count continues across staff{% else %}Open today’s register{% endif %}</h2><p>Opening cash is entered once. Staff logout and handover events are recorded without resetting the drawer balance.</p></div></section>
+
+    {% if current_session %}
+    <section class="register-hero"><div><span>Business date</span><strong>{{ current_session.business_date|date:'M j, Y' }}</strong></div><div><span>Opening cash</span><strong>₱{{ current_session.opening_cash|floatformat:2 }}</strong></div><div><span>Cash sales</span><strong>₱{{ current_session.cash_sales|floatformat:2 }}</strong></div><div><span>Expected cash</span><strong>₱{{ current_session.expected_cash|floatformat:2 }}</strong></div></section>
+    <section class="card register-control-card">
+        <div class="card-head"><div><h3>{% if user_has_control %}Register assigned to you{% elif active_activity %}Currently assigned to {{ active_activity.user.get_full_name|default:active_activity.user.username }}{% else %}Waiting for the next staff member{% endif %}</h3><p>{% if user_has_control %}You can accept cash sales or perform the final end-of-day close.{% else %}Resume this shared register without entering opening cash again.{% endif %}</p></div><span class="status {% if user_has_control %}good{% else %}low{% endif %}">{% if user_has_control %}ACTIVE{% else %}HANDOVER{% endif %}</span></div>
+        {% if user_has_control %}
+        <form method="post" class="pro-form">{% csrf_token %}<input type="hidden" name="action" value="close"><div class="form-row"><label>Final counted cash{{ close_form.closing_cash }}{{ close_form.closing_cash.errors }}</label><label>End-of-day notes{{ close_form.notes }}{{ close_form.notes.errors }}</label></div>{{ close_form.non_field_errors }}<button class="primary">Close register for the day</button></form>
+        {% else %}
+        <form method="post" class="pro-form narrow-form">{% csrf_token %}<input type="hidden" name="action" value="resume"><label>Handover note<input name="notes" maxlength="240" placeholder="Optional note about the handover"></label><button class="primary">Resume shared register</button></form>
+        {% endif %}
+    </section>
+    {% else %}
+    <form method="post" class="card pro-form narrow-form">{% csrf_token %}<input type="hidden" name="action" value="open"><div class="card-head"><div><h3>First opening of the day</h3><p>Only the first staff member enters the physical starting cash.</p></div></div>{{ open_form.non_field_errors }}<label>Opening cash{{ open_form.opening_cash }}{{ open_form.opening_cash.errors }}</label><label>Notes{{ open_form.notes }}{{ open_form.notes.errors }}</label><button class="primary">Open daily register</button></form>
+    {% endif %}
+
+    <section class="card table-card">
+        <div class="card-head table-heading"><div><h3>Register audit history</h3><p>Filter daily totals and every staff custody event</p></div><a class="secondary" href="{% url 'export_cash_register' %}?start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}">Export CSV</a></div>
+        <form class="report-filters register-filters" method="get"><label>From<input type="date" name="start" value="{{ start_date|date:'Y-m-d' }}"></label><label>To<input type="date" name="end" value="{{ end_date|date:'Y-m-d' }}"></label><button class="secondary">Apply range</button></form>
+        <div class="responsive-table"><table><thead><tr><th>Date</th><th>Opened by</th><th>Opening</th><th>Cash sales</th><th>Expected</th><th>Closing</th><th>Variance</th><th>Status</th></tr></thead><tbody>{% for session in sessions %}<tr><td>{{ session.business_date|date:'M j, Y' }}</td><td>{{ session.user.get_full_name|default:session.user.username }}</td><td>₱{{ session.opening_cash|floatformat:2 }}</td><td>₱{{ session.cash_sales|floatformat:2 }}</td><td>₱{{ session.expected_cash|floatformat:2 }}</td><td>{% if session.closing_cash != None %}₱{{ session.closing_cash|floatformat:2 }}{% else %}—{% endif %}</td><td>{% if session.variance != None %}₱{{ session.variance|floatformat:2 }}{% else %}—{% endif %}</td><td><span class="status {% if session.closed_at %}good{% else %}low{% endif %}">{% if session.closed_at %}Closed{% else %}Open{% endif %}</span></td></tr>{% empty %}<tr><td colspan="8" class="empty-table">No register sessions in this range.</td></tr>{% endfor %}</tbody></table></div>
+    </section>
+
+    <section class="card table-card"><div class="card-head table-heading"><div><h3>Staff custody activity</h3><p>Who controlled the cash drawer and when</p></div></div><div class="responsive-table"><table><thead><tr><th>Staff</th><th>Date</th><th>Started</th><th>Ended</th><th>Start</th><th>End</th><th>Notes</th></tr></thead><tbody>{% for activity in activities %}<tr><td>{{ activity.user.get_full_name|default:activity.user.username }}</td><td>{{ activity.register.business_date|date:'M j, Y' }}</td><td>{{ activity.started_at|date:'g:i A' }}</td><td>{{ activity.ended_at|date:'g:i A'|default:'Active' }}</td><td>{{ activity.get_start_reason_display }}</td><td>{{ activity.get_end_reason_display|default:'—' }}</td><td>{{ activity.notes|default:'—' }}</td></tr>{% empty %}<tr><td colspan="7" class="empty-table">No staff activity in this range.</td></tr>{% endfor %}</tbody></table></div></section>
+</div>
+{% endblock %}

@@ -1,0 +1,1422 @@
+import csv
+import json
+from datetime import timedelta
+from decimal import Decimal
+from io import StringIO
+from unittest.mock import patch
+
+from django.contrib.auth import authenticate
+from django.contrib.auth.models import User
+from django.core import mail
+from django.core.exceptions import ValidationError
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.core.management import call_command
+from django.db import IntegrityError, transaction
+from django.test import TestCase, override_settings
+from django.urls import reverse
+from django.utils import timezone
+
+from .models import (
+    CashRegisterActivity,
+    CashRegisterSession,
+    Customer,
+    DemoRequest,
+    InventoryMovement,
+    Product,
+    ProductCategory,
+    PurchaseOrder,
+    ReportSchedule,
+    Sale,
+    StockTransfer,
+    StoreAuditEvent,
+    StoreMembership,
+    StoreSettings,
+    SubscriptionRequest,
+    Supplier,
+    UserSecurityProfile,
+)
+from .subscriptions import activate_subscription
+
+
+class StoreTestCase(TestCase):
+    def setUp(self):
+        today = timezone.localdate()
+        self.user = User.objects.create_user(
+            username="owner",
+            email="owner@example.com",
+            password="strong-test-password",
+        )
+        self.store = StoreSettings.objects.create(
+            business_name="First Store",
+            store_id="STORE-ONE",
+            active_plan="Starter",
+            status="Active",
+            subscription_start=today,
+            subscription_end=today + timedelta(days=30),
+        )
+        self.membership = StoreMembership.objects.create(
+            store=self.store,
+            user=self.user,
+            role=StoreMembership.Role.ADMINISTRATOR,
+        )
+        self.product = Product.objects.create(
+            store=self.store,
+            name="Test Latte",
+            category="Drinks",
+            barcode="LATTE-001",
+            cost=Decimal("50.00"),
+            price=Decimal("100.00"),
+            stock=10,
+            low_stock_threshold=3,
+        )
+        self.client.force_login(self.user)
+
+    def complete_sale(self, product=None, quantity=1, **extra):
+        product = product or self.product
+        payload = {
+            "cart_json": json.dumps([{"id": product.pk, "qty": quantity}]),
+            "payment_method": "Cash",
+            **extra,
+        }
+        return self.client.post(reverse("complete_sale"), payload)
+
+
+class PosFlowTests(StoreTestCase):
+    def test_dashboard_requires_login(self):
+        self.client.logout()
+        response = self.client.get(reverse("dashboard"))
+        self.assertRedirects(response, f"{reverse('login')}?next={reverse('dashboard')}")
+
+    def test_complete_sale_is_scoped_and_reduces_stock(self):
+        response = self.complete_sale(quantity=2, payment_method="GCash")
+        sale = Sale.objects.get()
+        self.assertRedirects(response, reverse("receipt", args=[sale.pk]))
+        self.assertEqual(sale.store, self.store)
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock, 8)
+        self.assertEqual(sale.total, Decimal("224.00"))
+        self.assertEqual(sale.items.get().unit_cost, Decimal("50.00"))
+
+    def test_duplicate_cart_lines_are_consolidated(self):
+        response = self.client.post(
+            reverse("complete_sale"),
+            {
+                "cart_json": json.dumps(
+                    [{"id": self.product.pk, "qty": 1}, {"id": self.product.pk, "qty": 2}]
+                )
+            },
+        )
+        sale = Sale.objects.get()
+        self.assertRedirects(response, reverse("receipt", args=[sale.pk]))
+        self.assertEqual(sale.items.get().quantity, 3)
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock, 7)
+
+    def test_duplicate_cart_lines_cannot_oversell(self):
+        response = self.client.post(
+            reverse("complete_sale"),
+            {
+                "cart_json": json.dumps(
+                    [{"id": self.product.pk, "qty": 6}, {"id": self.product.pk, "qty": 5}]
+                )
+            },
+            follow=True,
+        )
+        self.assertContains(response, "remain in stock")
+        self.assertFalse(Sale.objects.exists())
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock, 10)
+
+    def test_profit_uses_cost_captured_at_sale_time(self):
+        self.complete_sale(quantity=2)
+        self.product.cost = Decimal("90.00")
+        self.product.save()
+        response = self.client.get(reverse("reports"))
+        self.assertEqual(response.context["net_profit"], Decimal("100.00"))
+
+    def test_product_search_and_export_are_store_scoped(self):
+        response = self.client.get(reverse("products"), {"q": self.product.barcode})
+        self.assertContains(response, "Test Latte")
+        export = self.client.get(reverse("export_products"))
+        self.assertIn(b"Test Latte", export.content)
+
+    def test_receipt_preference_can_return_to_checkout(self):
+        self.store.receipt_after_sale = False
+        self.store.save()
+        self.assertRedirects(self.complete_sale(), reverse("sell"))
+
+    def test_negative_product_price_is_rejected_server_side(self):
+        response = self.client.post(
+            reverse("products"),
+            {
+                "name": "Invalid Product",
+                "category": "Other",
+                "barcode": "INVALID-PRICE",
+                "cost": "10.00",
+                "price": "-1.00",
+                "stock": "1",
+                "low_stock_threshold": "1",
+            },
+        )
+        self.assertFormError(
+            response.context["form"],
+            "price",
+            "Ensure this value is greater than or equal to 0.00.",
+        )
+        self.assertFalse(Product.objects.filter(store=self.store, barcode="INVALID-PRICE").exists())
+
+    def test_store_uses_focused_categories_and_users_can_add_another(self):
+        cafe = StoreSettings.objects.create(
+            business_name="Focused Cafe",
+            store_id="FOCUSED-CAFE",
+            store_type=StoreSettings.StoreType.CAFE,
+        )
+        self.assertEqual(
+            set(cafe.product_categories.values_list("name", flat=True)),
+            set(StoreSettings.CATEGORY_PRESETS[StoreSettings.StoreType.CAFE]),
+        )
+        self.assertFalse(cafe.product_categories.filter(name="Hardware").exists())
+
+        response = self.client.post(reverse("add_product_category"), {"name": "Frozen Desserts"})
+        self.assertRedirects(response, reverse("products"))
+        category = ProductCategory.objects.get(store=self.store, name="Frozen Desserts")
+        self.assertTrue(category.is_custom)
+        products_page = self.client.get(reverse("products"))
+        self.assertContains(products_page, '<option value="Frozen Desserts">Frozen Desserts</option>', html=True)
+
+    def test_product_rejects_category_that_is_not_available_to_store(self):
+        response = self.client.post(
+            reverse("products"),
+            {
+                "name": "Unfocused Product",
+                "category": "Gadgets",
+                "barcode": "WRONG-CATEGORY",
+                "cost": "10.00",
+                "price": "20.00",
+                "stock": "1",
+                "low_stock_threshold": "1",
+            },
+        )
+        self.assertFormError(response.context["form"], "category", "Select a valid choice. Gadgets is not one of the available choices.")
+        self.assertFalse(Product.objects.filter(store=self.store, barcode="WRONG-CATEGORY").exists())
+
+    def test_store_type_change_replaces_only_unused_preset_categories(self):
+        store = StoreSettings.objects.create(
+            business_name="Changing Shop",
+            store_id="CHANGING-SHOP",
+            store_type=StoreSettings.StoreType.FASHION,
+        )
+        Product.objects.create(store=store, name="Running Shoes", category="Footwear", price=100, stock=1)
+        store.store_type = StoreSettings.StoreType.BEAUTY
+        store.save()
+        names = set(store.product_categories.values_list("name", flat=True))
+        self.assertTrue({"Cosmetics", "Personal Care", "Other", "Footwear"}.issubset(names))
+        self.assertNotIn("Clothing", names)
+        self.assertNotIn("Fashion Accessories", names)
+
+    def test_expired_subscription_blocks_operations_but_keeps_dashboard(self):
+        self.store.subscription_end = timezone.localdate() - timedelta(days=1)
+        self.store.save()
+        self.assertEqual(self.client.get(reverse("dashboard")).status_code, 200)
+        self.assertContains(self.client.get(reverse("dashboard")), "Expired subscription")
+        self.assertEqual(self.client.get(reverse("sell")).status_code, 403)
+        self.assertEqual(self.client.get(reverse("products")).status_code, 403)
+
+
+class OfflineSalesRecoveryTests(StoreTestCase):
+    fields = [
+        "offline_order_id",
+        "sold_at",
+        "payment_method",
+        "product_name",
+        "barcode",
+        "unit_price",
+        "quantity",
+        "collected_order_total",
+        "notes",
+    ]
+
+    def upload(self, rows, name="offline-sales.csv"):
+        output = StringIO()
+        writer = csv.DictWriter(output, fieldnames=self.fields)
+        writer.writeheader()
+        writer.writerows(rows)
+        return SimpleUploadedFile(name, output.getvalue().encode("utf-8"), content_type="text/csv")
+
+    def order_rows(self, *, order_id="OFF-20260808-001", total="336.00"):
+        sold_at = timezone.localtime(timezone.now() - timedelta(minutes=15)).strftime("%Y-%m-%d %H:%M")
+        common = {
+            "offline_order_id": order_id,
+            "sold_at": sold_at,
+            "payment_method": "Cash",
+            "product_name": self.product.name,
+            "barcode": self.product.barcode,
+            "unit_price": "100.00",
+            "collected_order_total": total,
+            "notes": "Recorded during connectivity outage",
+        }
+        return [{**common, "quantity": "1"}, {**common, "quantity": "2"}]
+
+    def test_template_contains_uploadable_headers_and_current_catalog(self):
+        page = self.client.get(reverse("sell"))
+        self.assertContains(page, "Outage recovery")
+        self.assertContains(page, reverse("offline_sales_template"))
+        self.assertContains(page, reverse("import_offline_sales"))
+
+        response = self.client.get(reverse("offline_sales_template"))
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("text/csv", response["Content-Type"])
+        rows = list(csv.DictReader(StringIO(response.content.decode("utf-8"))))
+        self.assertEqual(list(rows[0]), self.fields)
+        self.assertEqual(rows[0]["barcode"], self.product.barcode)
+        self.assertEqual(rows[0]["unit_price"], "100.00")
+        self.assertEqual(rows[0]["offline_order_id"], "")
+
+    def test_import_is_atomic_audited_and_duplicate_safe(self):
+        response = self.client.post(
+            reverse("import_offline_sales"),
+            {"csv_file": self.upload(self.order_rows())},
+            follow=True,
+        )
+        self.assertContains(response, "Imported 1 offline order")
+        sale = Sale.objects.get(external_order_id="OFF-20260808-001")
+        self.assertEqual(sale.source, Sale.Source.OFFLINE_CSV)
+        self.assertEqual(sale.subtotal, Decimal("300.00"))
+        self.assertEqual(sale.tax, Decimal("36.00"))
+        self.assertEqual(sale.total, Decimal("336.00"))
+        self.assertEqual(sale.offline_notes, "Recorded during connectivity outage")
+        item = sale.items.get()
+        self.assertEqual(item.quantity, 3)
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock, 7)
+        movement = InventoryMovement.objects.get(
+            movement_type=InventoryMovement.MovementType.OFFLINE_SALE
+        )
+        self.assertEqual(movement.quantity, -3)
+        self.assertEqual(movement.reference, "OFF-20260808-001")
+        self.assertTrue(
+            StoreAuditEvent.objects.filter(store=self.store, action="sale.offline_import").exists()
+        )
+
+        duplicate = self.client.post(
+            reverse("import_offline_sales"),
+            {"csv_file": self.upload(self.order_rows())},
+            follow=True,
+        )
+        self.assertContains(duplicate, "already exist")
+        self.assertEqual(Sale.objects.filter(source=Sale.Source.OFFLINE_CSV).count(), 1)
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock, 7)
+
+    def test_invalid_total_rolls_back_the_entire_import(self):
+        response = self.client.post(
+            reverse("import_offline_sales"),
+            {"csv_file": self.upload(self.order_rows(total="300.00"))},
+            follow=True,
+        )
+        self.assertContains(response, "POSitive! calculates ₱336.00")
+        self.assertFalse(Sale.objects.filter(source=Sale.Source.OFFLINE_CSV).exists())
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock, 10)
+        self.assertFalse(
+            InventoryMovement.objects.filter(
+                movement_type=InventoryMovement.MovementType.OFFLINE_SALE
+            ).exists()
+        )
+
+
+class MultiStoreIsolationTests(StoreTestCase):
+    def setUp(self):
+        super().setUp()
+        today = timezone.localdate()
+        self.other_store = StoreSettings.objects.create(
+            business_name="Second Store",
+            store_id="STORE-TWO",
+            active_plan="Pro",
+            status="Active",
+            subscription_start=today,
+            subscription_end=today + timedelta(days=60),
+        )
+        StoreMembership.objects.create(
+            store=self.other_store,
+            user=self.user,
+            role=StoreMembership.Role.ADMINISTRATOR,
+        )
+        self.other_product = Product.objects.create(
+            store=self.other_store,
+            name="Other Store Tea",
+            category="Drinks",
+            barcode="LATTE-001",
+            cost=Decimal("20.00"),
+            price=Decimal("40.00"),
+            stock=8,
+        )
+
+    def test_store_administrator_can_switch_between_all_assigned_stores(self):
+        dashboard = self.client.get(reverse("dashboard"))
+        self.assertEqual(len(dashboard.wsgi_request.available_memberships), 2)
+        response = self.client.post(
+            reverse("switch_store"),
+            {"store_id": self.other_store.pk, "next": reverse("sell")},
+        )
+        self.assertRedirects(response, reverse("sell"))
+        sell_page = self.client.get(reverse("sell"))
+        self.assertContains(sell_page, "Other Store Tea")
+        self.assertNotContains(sell_page, "Test Latte")
+
+    def test_tampered_cart_cannot_sell_another_stores_product(self):
+        response = self.complete_sale(product=self.other_product)
+        self.assertRedirects(response, reverse("sell"))
+        self.assertFalse(Sale.objects.exists())
+        self.other_product.refresh_from_db()
+        self.assertEqual(self.other_product.stock, 8)
+
+    def test_receipts_and_exports_do_not_leak_between_stores(self):
+        other_sale = Sale.objects.create(
+            store=self.other_store,
+            receipt_number="OTHER-RECEIPT",
+            user=self.user,
+            payment_method="Cash",
+            subtotal=Decimal("40.00"),
+            tax=Decimal("0.00"),
+            total=Decimal("40.00"),
+        )
+        self.assertEqual(self.client.get(reverse("receipt", args=[other_sale.pk])).status_code, 404)
+        self.assertNotIn("OTHER-RECEIPT", self.client.get(reverse("export_sales")).content.decode())
+
+    def test_same_barcode_is_allowed_in_different_stores_only(self):
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            Product.objects.create(
+                store=self.store,
+                name="Duplicate",
+                barcode="LATTE-001",
+                price=Decimal("10.00"),
+            )
+
+
+class StoreTeamAccessTests(StoreTestCase):
+    def test_store_administrator_cannot_modify_platform_controlled_store(self):
+        response = self.client.post(
+            reverse("settings"),
+            {
+                "action": "store",
+                "business_name": "Unauthorized Rename",
+                "active_plan": "Pro",
+                "status": "Suspended",
+            },
+        )
+        self.assertEqual(response.status_code, 403)
+        self.store.refresh_from_db()
+        self.assertEqual(self.store.business_name, "First Store")
+        self.assertEqual(self.store.active_plan, "Starter")
+        self.assertEqual(self.store.status, "Active")
+
+    def test_store_administrator_can_create_staff_up_to_starter_limit(self):
+        for index in range(2):
+            response = self.client.post(
+                reverse("settings"),
+                {
+                    "action": "team",
+                    "username": f"cashier{index}",
+                    "email": f"cashier{index}@example.com",
+                    "first_name": "Cashier",
+                    "last_name": str(index),
+                    "password": "strong-cashier-password-42",
+                    "password_confirm": "strong-cashier-password-42",
+                },
+            )
+            self.assertRedirects(response, reverse("settings"))
+        self.assertEqual(self.store.active_staff_count, 2)
+
+        response = self.client.post(
+            reverse("settings"),
+            {
+                "action": "team",
+                "username": "cashier-over-limit",
+                "email": "over@example.com",
+                "password": "strong-cashier-password-42",
+                "password_confirm": "strong-cashier-password-42",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Starter plan allows 2 staff account")
+        self.assertFalse(User.objects.filter(username="cashier-over-limit").exists())
+
+    def test_existing_user_can_be_assigned_to_multiple_stores(self):
+        today = timezone.localdate()
+        second_store = StoreSettings.objects.create(
+            business_name="Branch Two",
+            store_id="BRANCH-TWO",
+            active_plan="Starter",
+            subscription_end=today + timedelta(days=30),
+        )
+        existing = User.objects.create_user(
+            username="shared-staff",
+            email="shared-staff@example.com",
+            password="existing-password-42",
+        )
+        StoreMembership.objects.create(store=second_store, user=existing, role=StoreMembership.Role.STAFF)
+        response = self.client.post(
+            reverse("settings"),
+            {"action": "team", "username": "shared-staff", "email": "", "password": "", "password_confirm": ""},
+        )
+        self.assertRedirects(response, reverse("settings"))
+        self.assertEqual(existing.store_memberships.count(), 2)
+        existing.refresh_from_db()
+        self.assertTrue(existing.check_password("existing-password-42"))
+
+    def test_staff_only_see_assigned_stores_and_cannot_manage(self):
+        cashier = User.objects.create_user(username="cashier", password="cashier-password-42")
+        StoreMembership.objects.create(store=self.store, user=cashier, role=StoreMembership.Role.STAFF)
+        unassigned = StoreSettings.objects.create(
+            business_name="Hidden Store",
+            store_id="HIDDEN",
+            active_plan="Pro",
+        )
+        self.client.force_login(cashier)
+        dashboard = self.client.get(reverse("dashboard"))
+        self.assertEqual([item.store for item in dashboard.wsgi_request.available_memberships], [self.store])
+        self.assertNotContains(dashboard, unassigned.business_name)
+        for name in ["products", "reports", "settings", "export_products", "export_sales"]:
+            with self.subTest(name=name):
+                self.assertEqual(self.client.get(reverse(name)).status_code, 403)
+        self.assertEqual(self.client.get(reverse("sell")).status_code, 200)
+
+    def test_removing_staff_revokes_only_that_store_membership(self):
+        cashier = User.objects.create_user(username="cashier", password="cashier-password-42")
+        membership = StoreMembership.objects.create(store=self.store, user=cashier, role=StoreMembership.Role.STAFF)
+        self.client.post(reverse("remove_staff", args=[membership.pk]))
+        self.assertFalse(StoreMembership.objects.filter(pk=membership.pk).exists())
+        self.assertTrue(User.objects.filter(pk=cashier.pk).exists())
+
+    def test_starter_allows_one_administrator_and_pro_allows_three(self):
+        second_admin = User.objects.create_user(username="second-admin", password="second-admin-password-42")
+        with self.assertRaises(ValidationError):
+            StoreMembership.objects.create(
+                store=self.store,
+                user=second_admin,
+                role=StoreMembership.Role.ADMINISTRATOR,
+            )
+
+        self.store.active_plan = "Pro"
+        self.store.save()
+        StoreMembership.objects.create(
+            store=self.store,
+            user=second_admin,
+            role=StoreMembership.Role.ADMINISTRATOR,
+        )
+        third_admin = User.objects.create_user(username="third-admin", password="third-admin-password-42")
+        StoreMembership.objects.create(
+            store=self.store,
+            user=third_admin,
+            role=StoreMembership.Role.ADMINISTRATOR,
+        )
+        fourth_admin = User.objects.create_user(username="fourth-admin", password="fourth-admin-password-42")
+        with self.assertRaises(ValidationError):
+            StoreMembership.objects.create(
+                store=self.store,
+                user=fourth_admin,
+                role=StoreMembership.Role.ADMINISTRATOR,
+            )
+        self.assertEqual(self.store.active_administrator_count, 3)
+
+
+class ProOperationsTests(StoreTestCase):
+    def setUp(self):
+        super().setUp()
+        self.store.active_plan = "Pro"
+        self.store.save()
+
+    def add_staff(self, username, access_level):
+        user = User.objects.create_user(
+            username=username,
+            email=f"{username}@example.com",
+            password="Role-password-4827!",
+        )
+        membership = StoreMembership.objects.create(
+            store=self.store,
+            user=user,
+            role=StoreMembership.Role.STAFF,
+            access_level=access_level,
+        )
+        return user, membership
+
+    def test_role_permissions_are_enforced(self):
+        inventory_user, _ = self.add_staff("inventory-user", StoreMembership.AccessLevel.INVENTORY)
+        self.client.force_login(inventory_user)
+        self.assertEqual(self.client.get(reverse("products")).status_code, 200)
+        self.assertEqual(self.client.get(reverse("pro_inventory")).status_code, 200)
+        self.assertEqual(self.client.get(reverse("purchasing")).status_code, 200)
+        self.assertEqual(self.client.get(reverse("reports")).status_code, 403)
+        self.assertEqual(self.client.get(reverse("customers")).status_code, 403)
+        self.assertEqual(self.client.get(reverse("settings")).status_code, 403)
+
+        manager, _ = self.add_staff("manager-user", StoreMembership.AccessLevel.MANAGER)
+        self.client.force_login(manager)
+        self.assertEqual(self.client.get(reverse("reports")).status_code, 200)
+        self.assertEqual(self.client.get(reverse("customers")).status_code, 200)
+
+    def test_customer_discount_loyalty_and_refund_restore_balances(self):
+        customer = Customer.objects.create(
+            store=self.store,
+            name="Loyal Customer",
+            loyalty_points=20,
+        )
+        response = self.complete_sale(
+            quantity=2,
+            payment_method="GCash",
+            customer_id=customer.pk,
+            discount_rate="10",
+            loyalty_points="10",
+        )
+        sale = Sale.objects.get()
+        self.assertRedirects(response, reverse("receipt", args=[sale.pk]))
+        self.assertEqual(sale.discount, Decimal("20.00"))
+        self.assertEqual(sale.loyalty_discount, Decimal("10.00"))
+        self.assertEqual(sale.total, Decimal("190.40"))
+        customer.refresh_from_db()
+        self.assertEqual(customer.loyalty_points, 11)
+        self.assertEqual(customer.total_spent, Decimal("190.40"))
+
+        response = self.client.post(
+            reverse("reverse_sale", args=[sale.pk]),
+            {"action": "refund", "reason": "Customer returned the order"},
+        )
+        self.assertRedirects(response, reverse("receipt", args=[sale.pk]))
+        sale.refresh_from_db()
+        customer.refresh_from_db()
+        self.product.refresh_from_db()
+        self.assertEqual(sale.status, "Refunded")
+        self.assertEqual(customer.loyalty_points, 20)
+        self.assertEqual(customer.total_spent, Decimal("0.00"))
+        self.assertEqual(self.product.stock, 10)
+        self.assertEqual(
+            InventoryMovement.objects.filter(store=self.store, product=self.product).count(),
+            2,
+        )
+
+    def test_cash_register_is_required_and_reconciles_cash_sales(self):
+        response = self.complete_sale(payment_method="Cash")
+        self.assertRedirects(response, reverse("sell"))
+        self.assertContains(self.client.get(reverse("sell")), "Cash register closed")
+        self.assertFalse(Sale.objects.exists())
+
+        self.assertRedirects(
+            self.client.post(
+                reverse("cash_register"),
+                {"action": "open", "opening_cash": "100.00", "notes": "Morning shift"},
+            ),
+            reverse("cash_register"),
+        )
+        self.complete_sale(payment_method="Cash")
+        session = CashRegisterSession.objects.get(store=self.store)
+        self.assertEqual(session.expected_cash, Decimal("212.00"))
+        self.assertRedirects(
+            self.client.post(
+                reverse("cash_register"),
+                {"action": "close", "closing_cash": "212.00", "notes": "Balanced"},
+            ),
+            reverse("cash_register"),
+        )
+        session.refresh_from_db()
+        self.assertEqual(session.variance, Decimal("0.00"))
+
+    def test_shared_register_survives_logout_handover_and_exports_audit(self):
+        cashier, _ = self.add_staff("handover-cashier", StoreMembership.AccessLevel.CASHIER)
+        self.client.post(
+            reverse("cash_register"),
+            {"action": "open", "opening_cash": "100.00", "notes": "Morning opening"},
+        )
+        register = CashRegisterSession.objects.get(store=self.store, closed_at__isnull=True)
+        opening_activity = register.activities.get(user=self.user)
+
+        self.client.post(reverse("logout"))
+        register.refresh_from_db()
+        opening_activity.refresh_from_db()
+        self.assertIsNone(register.closed_at)
+        self.assertEqual(opening_activity.end_reason, CashRegisterActivity.EndReason.LOGOUT)
+        self.assertIsNotNone(opening_activity.ended_at)
+
+        self.client.force_login(cashier)
+        handover_page = self.client.get(reverse("cash_register"))
+        self.assertContains(handover_page, "Resume shared register")
+        self.assertNotContains(handover_page, 'name="opening_cash"')
+        self.client.post(
+            reverse("cash_register"),
+            {"action": "resume", "notes": "Afternoon handover"},
+        )
+        active = register.activities.get(user=cashier, ended_at__isnull=True)
+        self.assertEqual(active.start_reason, CashRegisterActivity.StartReason.RESUMED)
+
+        self.complete_sale(payment_method="Cash")
+        register.refresh_from_db()
+        self.assertEqual(register.cash_sales, Decimal("112.00"))
+        self.assertEqual(register.expected_cash, Decimal("212.00"))
+
+        self.client.force_login(self.user)
+        export = self.client.get(reverse("export_cash_register"))
+        csv_text = export.content.decode()
+        self.assertEqual(export.status_code, 200)
+        self.assertIn("owner", csv_text)
+        self.assertIn("handover-cashier", csv_text)
+        self.assertIn("Afternoon handover", csv_text)
+
+    def test_stocktake_and_inter_store_transfer_write_movements(self):
+        destination = StoreSettings.objects.create(
+            business_name="Pro Branch",
+            store_id="PRO-BRANCH",
+            active_plan="Pro",
+            subscription_end=timezone.localdate() + timedelta(days=30),
+        )
+        StoreMembership.objects.create(
+            store=destination,
+            user=self.user,
+            role=StoreMembership.Role.ADMINISTRATOR,
+        )
+        self.client.post(
+            reverse("pro_inventory"),
+            {
+                "action": "stocktake",
+                "product": self.product.pk,
+                "counted_stock": 12,
+                "reason": "Physical count",
+            },
+        )
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock, 12)
+
+        response = self.client.post(
+            reverse("pro_inventory"),
+            {
+                "action": "transfer",
+                "destination_store": destination.pk,
+                "product": self.product.pk,
+                "quantity": 3,
+                "notes": "Branch replenishment",
+            },
+        )
+        self.assertRedirects(response, reverse("pro_inventory"))
+        self.product.refresh_from_db()
+        destination_product = destination.products.get(barcode=self.product.barcode)
+        self.assertEqual(self.product.stock, 9)
+        self.assertEqual(destination_product.stock, 3)
+        self.assertEqual(StockTransfer.objects.count(), 1)
+        self.assertEqual(InventoryMovement.objects.filter(reference__startswith="TRANSFER-").count(), 2)
+
+    def test_supplier_purchase_order_and_receiving_update_inventory(self):
+        self.client.post(
+            reverse("purchasing"),
+            {
+                "action": "supplier",
+                "name": "Coffee Supply Co.",
+                "contact_person": "Kai",
+                "email": "supply@example.com",
+                "phone": "",
+                "address": "",
+            },
+        )
+        supplier = Supplier.objects.get(store=self.store)
+        response = self.client.post(
+            reverse("purchasing"),
+            {
+                "action": "purchase_order",
+                "supplier": supplier.pk,
+                "notes": "Weekly order",
+                "items-TOTAL_FORMS": "3",
+                "items-INITIAL_FORMS": "0",
+                "items-MIN_NUM_FORMS": "0",
+                "items-MAX_NUM_FORMS": "10",
+                "items-0-product": self.product.pk,
+                "items-0-quantity": "5",
+                "items-0-unit_cost": "45.00",
+                "items-1-product": "",
+                "items-1-quantity": "",
+                "items-1-unit_cost": "",
+                "items-2-product": "",
+                "items-2-quantity": "",
+                "items-2-unit_cost": "",
+            },
+        )
+        self.assertRedirects(response, reverse("purchasing"))
+        order = PurchaseOrder.objects.get(store=self.store)
+        self.assertEqual(order.total, Decimal("225"))
+        self.assertRedirects(
+            self.client.post(reverse("receive_purchase_order", args=[order.pk])),
+            reverse("purchasing"),
+        )
+        order.refresh_from_db()
+        self.product.refresh_from_db()
+        self.assertEqual(order.status, PurchaseOrder.Status.RECEIVED)
+        self.assertEqual(self.product.stock, 15)
+        self.assertEqual(self.product.cost, Decimal("45.00"))
+
+    def test_bulk_import_custom_reports_and_multi_store_overview(self):
+        csv_file = SimpleUploadedFile(
+            "products.csv",
+            b"name,category,barcode,cost,price,stock,low_stock_threshold\nCold Brew,Drinks,CB-001,40,90,7,2\n",
+            content_type="text/csv",
+        )
+        self.assertRedirects(
+            self.client.post(reverse("import_products"), {"csv_file": csv_file}),
+            reverse("products"),
+        )
+        self.assertTrue(Product.objects.filter(store=self.store, barcode="CB-001", stock=7).exists())
+        today = timezone.localdate()
+        report = self.client.get(
+            reverse("reports"),
+            {"start": (today - timedelta(days=10)).isoformat(), "end": today.isoformat()},
+        )
+        self.assertEqual(report.context["range_key"], "custom")
+        overview = self.client.get(reverse("multi_store_dashboard"))
+        self.assertEqual(overview.status_code, 200)
+        self.assertContains(overview, "Every Pro store in one view")
+
+    @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+    def test_scheduled_summary_command_sends_due_pro_report(self):
+        schedule = ReportSchedule.objects.create(
+            store=self.store,
+            recipient_email="reports@example.com",
+            frequency=ReportSchedule.Frequency.DAILY,
+        )
+        output = StringIO()
+        call_command("send_scheduled_reports", stdout=output)
+        schedule.refresh_from_db()
+        self.assertIsNotNone(schedule.last_sent_at)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, ["reports@example.com"])
+        self.assertIn("Sent 1 scheduled report", output.getvalue())
+
+
+class SubscriptionPaymentTests(StoreTestCase):
+    def test_landbank_request_and_idempotent_approval_activate_access(self):
+        original_end = self.store.subscription_end
+        page = self.client.get(reverse("settings"))
+        self.assertContains(page, "LANDBANK")
+        self.assertContains(page, "Marc Gaia Ojoy")
+        self.assertContains(page, "09640832257")
+        self.assertNotContains(page, '<option value="GCash">')
+
+        response = self.client.post(
+            reverse("settings"),
+            {
+                "action": "subscription",
+                "plan": "Starter",
+                "payment_method": SubscriptionRequest.PaymentMethod.BANK_TRANSFER,
+                "payer_name": "Demo Payer",
+                "payment_reference": "LBP-123456",
+                "contact_details": "demo@example.com",
+                "message": "Presentation payment",
+            },
+        )
+        self.assertRedirects(response, reverse("settings"))
+        payment = SubscriptionRequest.objects.get(store=self.store)
+        self.assertEqual(payment.amount, Decimal("399.00"))
+        self.assertEqual(payment.status, SubscriptionRequest.Status.PENDING)
+
+        payment, changed = activate_subscription(payment.pk, reviewed_by=self.user)
+        self.assertTrue(changed)
+        self.store.refresh_from_db()
+        self.assertEqual(self.store.subscription_end, original_end + timedelta(days=30))
+        self.assertEqual(payment.status, SubscriptionRequest.Status.APPROVED)
+        self.assertIsNotNone(payment.activated_at)
+
+        _, changed_again = activate_subscription(payment.pk, reviewed_by=self.user)
+        self.assertFalse(changed_again)
+        self.store.refresh_from_db()
+        self.assertEqual(self.store.subscription_end, original_end + timedelta(days=30))
+
+    def test_cash_request_requires_contact_details(self):
+        response = self.client.post(
+            reverse("settings"),
+            {
+                "action": "subscription",
+                "plan": "Pro",
+                "payment_method": SubscriptionRequest.PaymentMethod.CASH,
+                "payer_name": "Cash Client",
+                "payment_reference": "",
+                "contact_details": "",
+                "message": "",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Enter an email address or mobile number")
+        self.assertFalse(SubscriptionRequest.objects.exists())
+
+    @override_settings(
+        MAYA_CHECKOUT_ENABLED=True,
+        MAYA_PUBLIC_API_KEY="sandbox-public",
+        MAYA_SECRET_API_KEY="sandbox-secret",
+    )
+    @patch("pos.maya._request_json")
+    def test_maya_checkout_is_created_only_when_enabled(self, request_json):
+        request_json.return_value = {
+            "checkoutId": "maya-payment-123",
+            "redirectUrl": "https://payments.example.test/checkout/123",
+        }
+        page = self.client.get(reverse("settings"))
+        self.assertContains(page, '<option value="Maya">')
+        response = self.client.post(
+            reverse("settings"),
+            {
+                "action": "subscription",
+                "plan": "Pro",
+                "payment_method": SubscriptionRequest.PaymentMethod.MAYA,
+                "payer_name": "Online Client",
+                "payment_reference": "",
+                "contact_details": "online@example.com",
+                "message": "",
+            },
+        )
+        self.assertRedirects(
+            response,
+            "https://payments.example.test/checkout/123",
+            fetch_redirect_response=False,
+        )
+        payment = SubscriptionRequest.objects.get(store=self.store)
+        self.assertEqual(payment.status, SubscriptionRequest.Status.AWAITING_PAYMENT)
+        self.assertEqual(payment.provider_payment_id, "maya-payment-123")
+        self.assertEqual(len(payment.provider_reference), 32)
+
+    @override_settings(
+        MAYA_CHECKOUT_ENABLED=True,
+        MAYA_PUBLIC_API_KEY="sandbox-public",
+        MAYA_SECRET_API_KEY="sandbox-secret",
+        MAYA_WEBHOOK_IP_CHECK=False,
+    )
+    @patch("pos.maya.retrieve_payment")
+    def test_verified_maya_webhook_activates_access_idempotently(self, retrieve_payment):
+        payment = SubscriptionRequest.objects.create(
+            store=self.store,
+            requested_by=self.user,
+            plan="Pro",
+            payment_method=SubscriptionRequest.PaymentMethod.MAYA,
+            amount=Decimal("799.00"),
+            payer_name="Online Client",
+            status=SubscriptionRequest.Status.AWAITING_PAYMENT,
+            provider_reference="secure-reference-123",
+            provider_payment_id="maya-payment-456",
+        )
+        retrieve_payment.return_value = {
+            "id": "maya-payment-456",
+            "requestReferenceNumber": "secure-reference-123",
+            "paymentStatus": "PAYMENT_SUCCESS",
+            "receiptNumber": "MAYA-RECEIPT-456",
+            "totalAmount": {"value": 799, "currency": "PHP"},
+        }
+        payload = {
+            "id": "maya-payment-456",
+            "requestReferenceNumber": "secure-reference-123",
+            "paymentStatus": "PAYMENT_SUCCESS",
+        }
+        response = self.client.post(
+            reverse("maya_payment_webhook"),
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["activated"])
+        payment.refresh_from_db()
+        self.store.refresh_from_db()
+        self.assertEqual(payment.status, SubscriptionRequest.Status.APPROVED)
+        self.assertEqual(payment.payment_reference, "MAYA-RECEIPT-456")
+        self.assertEqual(self.store.active_plan, "Pro")
+
+        duplicate = self.client.post(
+            reverse("maya_payment_webhook"),
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+        self.assertEqual(duplicate.status_code, 200)
+        self.assertTrue(duplicate.json()["activated"])
+        self.assertEqual(retrieve_payment.call_count, 1)
+
+
+class PlatformAdministrationTests(TestCase):
+    def setUp(self):
+        self.superuser = User.objects.create_superuser(
+            username="platform-admin",
+            email="platform@example.com",
+            password="platform-admin-password-42",
+        )
+
+    def test_only_superuser_can_open_platform_administration(self):
+        client_admin = User.objects.create_user(username="store-admin", password="store-admin-password-42")
+        self.client.force_login(client_admin)
+        self.assertEqual(self.client.get(reverse("admin:index")).status_code, 302)
+        self.client.force_login(self.superuser)
+        response = self.client.get(reverse("admin:index"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "admin-brand")
+        self.assertContains(response, "admin-account")
+        self.assertContains(response, "Log out")
+        self.assertNotContains(response, "Welcome,")
+        self.assertContains(response, 'id="storeSearch"')
+        self.assertContains(response, "Account access")
+        self.assertContains(response, "pos/css/admin.css")
+
+    def test_platform_admin_creates_store_and_initial_administrator_together(self):
+        today = timezone.localdate()
+        self.client.force_login(self.superuser)
+        response = self.client.post(
+            reverse("admin:pos_storesettings_add"),
+            {
+                "business_name": "Created Business",
+                "store_id": "CREATED-01",
+                "store_type": StoreSettings.StoreType.ELECTRONICS,
+                "contact_number": "",
+                "address": "",
+                "tax_rate": "12.00",
+                "active_plan": "Pro",
+                "status": "Active",
+                "subscription_start": today.isoformat(),
+                "subscription_end": (today + timedelta(days=30)).isoformat(),
+                "receipt_after_sale": "on",
+                "low_stock_alerts": "on",
+                "barcode_scanning": "",
+                "admin_username": "business-owner",
+                "admin_email": "business@example.com",
+                "admin_password": "Violet-lantern-9274!",
+                "admin_password_confirm": "Violet-lantern-9274!",
+                "_save": "Save",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        store = StoreSettings.objects.get(store_id="CREATED-01")
+        membership = store.memberships.get(role=StoreMembership.Role.ADMINISTRATOR)
+        self.assertEqual(membership.user.username, "business-owner")
+        self.assertFalse(membership.user.is_staff)
+        self.assertFalse(membership.user.is_superuser)
+        self.assertEqual(store.staff_limit, 10)
+        self.assertEqual(store.store_type, StoreSettings.StoreType.ELECTRONICS)
+        self.assertEqual(
+            set(store.product_categories.values_list("name", flat=True)),
+            set(StoreSettings.CATEGORY_PRESETS[StoreSettings.StoreType.ELECTRONICS]),
+        )
+        self.assertIsNotNone(
+            authenticate(username="business-owner", password="Violet-lantern-9274!")
+        )
+        self.assertTrue(membership.user.security_profile.must_change_password)
+
+        self.client.logout()
+        login_response = self.client.post(
+            reverse("login"),
+            {"username": "business-owner", "password": "Violet-lantern-9274!"},
+        )
+        self.assertEqual(login_response.status_code, 302)
+        self.assertEqual(login_response.url, reverse("dashboard"))
+        self.assertRedirects(
+            self.client.get(reverse("dashboard")),
+            reverse("password_change_required"),
+        )
+
+        password_response = self.client.post(
+            reverse("password_change_required"),
+            {
+                "old_password": "Violet-lantern-9274!",
+                "new_password1": "Permanent-elm-6519!",
+                "new_password2": "Permanent-elm-6519!",
+            },
+        )
+        self.assertRedirects(password_response, reverse("dashboard"))
+        membership.user.refresh_from_db()
+        membership.user.security_profile.refresh_from_db()
+        self.assertFalse(membership.user.security_profile.must_change_password)
+        self.assertIsNone(authenticate(username="business-owner", password="Violet-lantern-9274!"))
+        self.assertIsNotNone(authenticate(username="business-owner", password="Permanent-elm-6519!"))
+
+    def test_platform_dashboard_lists_all_stores_and_five_day_expirations(self):
+        today = timezone.localdate()
+        StoreSettings.objects.create(
+            business_name="Due Soon",
+            store_id="DUE-SOON",
+            active_plan="Starter",
+            subscription_end=today + timedelta(days=5),
+        )
+        StoreSettings.objects.create(
+            business_name="Later Store",
+            store_id="LATER",
+            active_plan="Pro",
+            subscription_end=today + timedelta(days=6),
+        )
+        self.client.force_login(self.superuser)
+        response = self.client.get(reverse("admin:index"))
+        self.assertContains(response, "Due Soon")
+        self.assertContains(response, "Later Store")
+        self.assertEqual(
+            [row["store"].business_name for row in response.context["expiring_store_rows"]],
+            ["Due Soon"],
+        )
+
+    def test_platform_can_assign_one_administrator_login_to_multiple_stores(self):
+        owner = User.objects.create_user(
+            username="multi-owner",
+            email="multi@example.com",
+            password="Copper-river-6812!",
+        )
+        self.client.force_login(self.superuser)
+        today = timezone.localdate()
+        for index in range(2):
+            response = self.client.post(
+                reverse("admin:pos_storesettings_add"),
+                {
+                    "business_name": f"Owner Store {index}",
+                    "store_id": f"OWNER-{index}",
+                    "store_type": StoreSettings.StoreType.GENERAL,
+                    "contact_number": "",
+                    "address": "",
+                    "tax_rate": "12.00",
+                    "active_plan": "Starter",
+                    "status": "Active",
+                    "subscription_start": today.isoformat(),
+                    "subscription_end": (today + timedelta(days=30)).isoformat(),
+                    "receipt_after_sale": "on",
+                    "low_stock_alerts": "on",
+                    "barcode_scanning": "",
+                    "admin_username": owner.username,
+                    "admin_email": owner.email,
+                    "admin_password": "",
+                    "admin_password_confirm": "",
+                    "_save": "Save",
+                },
+            )
+            self.assertEqual(response.status_code, 302)
+        self.assertEqual(
+            owner.store_memberships.filter(role=StoreMembership.Role.ADMINISTRATOR).count(),
+            2,
+        )
+        self.client.force_login(owner)
+        dashboard = self.client.get(reverse("dashboard"))
+        self.assertEqual(len(dashboard.wsgi_request.available_memberships), 2)
+
+    def test_platform_can_add_additional_administrator_to_pro_store(self):
+        today = timezone.localdate()
+        first_owner = User.objects.create_user(
+            username="first-pro-owner",
+            email="first-pro@example.com",
+            password="First-owner-6812!",
+        )
+        store = StoreSettings.objects.create(
+            business_name="Pro Owners Store",
+            store_id="PRO-OWNERS",
+            active_plan="Pro",
+            status="Active",
+            subscription_start=today,
+            subscription_end=today + timedelta(days=30),
+        )
+        StoreMembership.objects.create(
+            store=store,
+            user=first_owner,
+            role=StoreMembership.Role.ADMINISTRATOR,
+        )
+        self.client.force_login(self.superuser)
+        response = self.client.post(
+            reverse("admin:pos_storesettings_change", args=[store.pk]),
+            {
+                "business_name": store.business_name,
+                "store_id": store.store_id,
+                "store_type": store.store_type,
+                "contact_number": "",
+                "address": "",
+                "tax_rate": "12.00",
+                "active_plan": "Pro",
+                "status": "Active",
+                "subscription_start": today.isoformat(),
+                "subscription_end": (today + timedelta(days=30)).isoformat(),
+                "receipt_after_sale": "on",
+                "low_stock_alerts": "on",
+                "admin_username": "second-pro-owner",
+                "admin_email": "second-pro@example.com",
+                "admin_password": "Violet-lantern-9246!",
+                "admin_password_confirm": "Violet-lantern-9246!",
+                "_save": "Save",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(store.active_administrator_count, 2)
+        second_owner = User.objects.get(username="second-pro-owner")
+        self.assertTrue(second_owner.security_profile.must_change_password)
+
+
+class PublicTrialAndGuideTests(TestCase):
+    def trial_data(self, **overrides):
+        return {
+            "business_name": "Walk-in Trial Business",
+            "store_type": StoreSettings.StoreType.CAFE,
+            "first_name": "Trial",
+            "last_name": "Owner",
+            "username": "trial-owner",
+            "email": "trial@example.com",
+            "password1": "Orchid-cabin-4815!",
+            "password2": "Orchid-cabin-4815!",
+            "website": "",
+            **overrides,
+        }
+
+    def test_login_links_to_trial_plan_comparison_and_pdf(self):
+        response = self.client.get(reverse("login"))
+        self.assertContains(response, "Start a 30-day free trial")
+        self.assertContains(response, reverse("password_reset"))
+        self.assertContains(response, reverse("feature_guide"))
+        self.assertContains(response, reverse("feature_guide_pdf"))
+
+    def test_home_is_a_public_conversion_page_for_supported_retailers(self):
+        response = self.client.get(reverse("home"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Start free trial")
+        self.assertContains(response, "Book a demo")
+        self.assertContains(response, "Cafes")
+        self.assertContains(response, "Minimarts &amp; specialty grocery", html=True)
+        self.assertContains(response, "Clothing &amp; footwear", html=True)
+        self.assertContains(response, "Gadgets &amp; accessories", html=True)
+        self.assertContains(response, "Pet-supply stores")
+        self.assertContains(response, "Hardware &amp; general merchandise", html=True)
+        self.assertContains(response, "Cosmetics &amp; personal care", html=True)
+        self.assertContains(response, "Hardware requirements")
+        self.assertContains(response, "Frequently asked questions")
+        self.assertContains(response, "positive-60-second-demo.webm")
+        self.assertContains(response, reverse("public_document", args=["privacy"]))
+        self.assertContains(response, reverse("public_document", args=["security"]))
+
+    def test_demo_request_is_stored_and_honeypot_is_rejected(self):
+        response = self.client.post(
+            reverse("home"),
+            {
+                "name": "Cafe Owner",
+                "email": "owner@cafe.test",
+                "phone": "09170000000",
+                "business_name": "Morning Cup",
+                "business_type": "Cafe",
+                "preferred_schedule": "2026-08-12T10:30",
+                "message": "Show me checkout and inventory.",
+                "website": "",
+            },
+        )
+        self.assertRedirects(response, f"{reverse('home')}#book-demo", fetch_redirect_response=False)
+        demo_request = DemoRequest.objects.get()
+        self.assertEqual(demo_request.business_name, "Morning Cup")
+        self.assertEqual(demo_request.business_type, "Cafe")
+        self.assertEqual(demo_request.status, DemoRequest.Status.NEW)
+
+        blocked = self.client.post(
+            reverse("home"),
+            {
+                "name": "Bot",
+                "email": "bot@example.com",
+                "business_name": "Spam",
+                "website": "https://spam.example",
+            },
+        )
+        self.assertEqual(blocked.status_code, 200)
+        self.assertEqual(DemoRequest.objects.count(), 1)
+
+    def test_public_legal_and_trust_documents_are_published(self):
+        expected = {
+            "privacy": "Information we collect",
+            "terms": "Acceptable use",
+            "policies": "Backup and recovery policy",
+            "security": "Application protections",
+        }
+        for document, copy in expected.items():
+            with self.subTest(document=document):
+                response = self.client.get(reverse("public_document", args=[document]))
+                self.assertEqual(response.status_code, 200)
+                self.assertContains(response, copy)
+                self.assertContains(response, "michaeljohnojoy26@gmail.com")
+        self.assertEqual(self.client.get(reverse("public_document", args=["missing"])).status_code, 404)
+
+    def test_each_supported_store_type_has_its_own_category_preset(self):
+        expected = {
+            StoreSettings.StoreType.CAFE: "Coffee and Tea",
+            StoreSettings.StoreType.GROCERY: "Canned Goods",
+            StoreSettings.StoreType.FASHION: "Footwear",
+            StoreSettings.StoreType.ELECTRONICS: "Mobile Accessories",
+            StoreSettings.StoreType.PET_SUPPLIES: "Pet Food",
+            StoreSettings.StoreType.HARDWARE: "Tools",
+            StoreSettings.StoreType.BEAUTY: "Personal Care",
+        }
+        for store_type, category in expected.items():
+            with self.subTest(store_type=store_type):
+                self.assertIn(category, StoreSettings.CATEGORY_PRESETS[store_type])
+
+    def test_self_service_signup_creates_exactly_one_thirty_day_trial(self):
+        today = timezone.localdate()
+        signup_page = self.client.get(reverse("start_trial"))
+        self.assertNotContains(signup_page, "superuser", status_code=200)
+        self.assertNotContains(signup_page, "platform administrator")
+        self.assertNotContains(signup_page, "POSitive! provider")
+        response = self.client.post(reverse("start_trial"), self.trial_data())
+        self.assertRedirects(response, reverse("dashboard"))
+        store = StoreSettings.objects.get(business_name="Walk-in Trial Business")
+        membership = store.memberships.select_related("user").get()
+        self.assertEqual(store.active_plan, "Trial")
+        self.assertEqual(store.store_type, StoreSettings.StoreType.CAFE)
+        self.assertTrue(store.product_categories.filter(name="Coffee and Tea").exists())
+        self.assertFalse(store.product_categories.filter(name="Hardware").exists())
+        self.assertEqual(store.status, "Active")
+        self.assertEqual(store.subscription_start, today)
+        self.assertEqual((store.subscription_end - store.subscription_start).days + 1, 30)
+        self.assertEqual(store.staff_limit, 0)
+        self.assertEqual(membership.role, StoreMembership.Role.ADMINISTRATOR)
+        self.assertEqual(membership.user.username, "trial-owner")
+        self.assertEqual(int(self.client.session["_auth_user_id"]), membership.user_id)
+
+        second_attempt = self.client.get(reverse("start_trial"))
+        self.assertRedirects(second_attempt, reverse("dashboard"))
+        self.assertEqual(StoreSettings.objects.count(), 1)
+
+    def test_trial_rejects_existing_email_without_partial_store(self):
+        User.objects.create_user(
+            username="existing",
+            email="trial@example.com",
+            password="Existing-violet-8241!",
+        )
+        response = self.client.post(reverse("start_trial"), self.trial_data())
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "account with this email already exists")
+        self.assertFalse(StoreSettings.objects.exists())
+        self.assertFalse(User.objects.filter(username="trial-owner").exists())
+
+    def test_trial_plan_has_no_additional_staff_seats(self):
+        self.client.post(reverse("start_trial"), self.trial_data())
+        response = self.client.post(
+            reverse("settings"),
+            {
+                "action": "team",
+                "username": "trial-staff",
+                "email": "staff@example.com",
+                "password": "Pine-station-7316!",
+                "password_confirm": "Pine-station-7316!",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Trial plan allows 0 staff account")
+        self.assertFalse(User.objects.filter(username="trial-staff").exists())
+
+    def test_public_feature_page_and_downloadable_pdf(self):
+        page = self.client.get(reverse("feature_guide"))
+        self.assertContains(page, "Core system")
+        self.assertContains(page, "STARTER")
+        self.assertContains(page, "PRO")
+        self.assertContains(page, "30 days free")
+        self.assertContains(page, "₱399")
+        self.assertContains(page, "₱799")
+        self.assertContains(page, "Up to 3 store administrators")
+        self.assertContains(page, "scheduled summaries")
+        self.assertContains(page, "Included with every POSitive plan")
+        self.assertContains(page, "7-days-a-week local support")
+        self.assertContains(page, "Book a demo")
+        self.assertContains(page, "positive-logo-redesigned.png")
+        self.assertNotContains(page, "superuser")
+        self.assertNotContains(page, "platform administrator")
+        self.assertNotContains(page, "POSitive! provider")
+        self.assertNotContains(page, "Django Administration")
+
+        response = self.client.get(reverse("feature_guide_pdf"))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "application/pdf")
+        self.assertIn("POSitive-feature-and-plan-guide.pdf", response["Content-Disposition"])
+        content = b"".join(response.streaming_content)
+        self.assertTrue(content.startswith(b"%PDF-1.4"))
+        self.assertTrue(content.rstrip().endswith(b"%%EOF"))
+        self.assertGreater(len(content), 200_000)
+        self.assertIn(b"/Subtype /Image", content)
+        normalized_content = content.lower()
+        self.assertNotIn(b"superuser", normalized_content)
+        self.assertNotIn(b"platform administrator", normalized_content)
+        self.assertNotIn(b"positive! provider", normalized_content)
+        self.assertNotIn(b"django administration", normalized_content)
+        self.assertEqual(content.count(b"/Type /Page\n"), 3)
+
+    def test_store_workspace_exposes_persistent_theme_toggle(self):
+        today = timezone.localdate()
+        user = User.objects.create_user(username="theme-user", password="Theme-signal-5318!")
+        store = StoreSettings.objects.create(
+            business_name="Theme Store",
+            store_id="THEME",
+            active_plan="Starter",
+            subscription_end=today + timedelta(days=30),
+        )
+        StoreMembership.objects.create(
+            store=store,
+            user=user,
+            role=StoreMembership.Role.ADMINISTRATOR,
+        )
+        self.client.force_login(user)
+        response = self.client.get(reverse("dashboard"))
+        self.assertContains(response, 'id="themeToggle"')
+        self.assertContains(response, "positive-theme")
+        self.assertContains(response, "sidebar-logout")
+        self.assertContains(response, "Log out")
+
+
+class PasswordRecoveryTests(TestCase):
+    def setUp(self):
+        today = timezone.localdate()
+        self.user = User.objects.create_user(
+            username="recover-owner",
+            email="recover@example.com",
+            password="Temporary-maple-5729!",
+        )
+        self.store = StoreSettings.objects.create(
+            business_name="Recovery Store",
+            store_id="RECOVERY",
+            active_plan="Starter",
+            status="Active",
+            subscription_end=today + timedelta(days=30),
+        )
+        StoreMembership.objects.create(
+            store=self.store,
+            user=self.user,
+            role=StoreMembership.Role.ADMINISTRATOR,
+        )
+        UserSecurityProfile.require_password_change(self.user)
+
+    @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+    def test_registered_email_can_reset_password_and_clear_temporary_state(self):
+        response = self.client.post(
+            reverse("password_reset"),
+            {"email": "recover@example.com"},
+        )
+        self.assertRedirects(response, reverse("password_reset_done"))
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, ["recover@example.com"])
+
+        reset_url = next(
+            line.strip()
+            for line in mail.outbox[0].body.splitlines()
+            if line.strip().startswith("http://testserver/")
+        )
+        token_response = self.client.get(reset_url)
+        self.assertEqual(token_response.status_code, 302)
+        password_response = self.client.post(
+            token_response.url,
+            {
+                "new_password1": "Recovered-oak-8462!",
+                "new_password2": "Recovered-oak-8462!",
+            },
+        )
+        self.assertRedirects(password_response, reverse("password_reset_complete"))
+
+        self.user.refresh_from_db()
+        self.user.security_profile.refresh_from_db()
+        self.assertFalse(self.user.security_profile.must_change_password)
+        self.assertIsNone(authenticate(username="recover-owner", password="Temporary-maple-5729!"))
+        self.assertIsNotNone(authenticate(username="recover-owner", password="Recovered-oak-8462!"))
+
+    @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+    def test_unknown_email_gets_same_confirmation_without_sending_mail(self):
+        response = self.client.post(
+            reverse("password_reset"),
+            {"email": "unknown@example.com"},
+        )
+        self.assertRedirects(response, reverse("password_reset_done"))
+        self.assertEqual(len(mail.outbox), 0)
+
+    @patch("django.core.mail.EmailMultiAlternatives.send", side_effect=OSError("SMTP unavailable"))
+    def test_delivery_failure_is_shown_instead_of_false_success(self, _send_mail):
+        response = self.client.post(
+            reverse("password_reset"),
+            {"email": "recover@example.com"},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "We could not send the reset email right now")

@@ -1,0 +1,34 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Start your free trial — POSitive!</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{% static 'pos/css/app.css' %}">
+</head>
+<body class="login-body">
+<main class="login-shell trial-shell">
+    <section class="login-story">
+        <a class="brand login-brand" href="{% url 'login' %}">{% include 'includes/brand_logo.html' %}</a>
+        <div class="story-copy"><span class="eyebrow light">30 days free · no card required</span><h1>Try the complete POS workflow today.</h1><p>Your secure Trial store and administrator account are created immediately, ready for products, inventory, and test sales.</p></div>
+        <div class="story-metrics"><div><strong>Full</strong><small>Core POS</small></div><div><strong>1</strong><small>Admin login</small></div><div><strong>30</strong><small>Days free</small></div></div>
+    </section>
+    <section class="login-panel trial-panel">
+        <form method="post" class="login-card trial-card">
+            {% csrf_token %}{{ form.website }}
+            <span class="eyebrow">Self-service trial</span><h2>Create your Trial store</h2><p>One store will be provisioned automatically. You can begin adding products and processing test sales after signup.</p>
+            {% if form.non_field_errors %}<div class="form-error">{{ form.non_field_errors }}</div>{% endif %}
+            <label>Business name{{ form.business_name }}{{ form.business_name.errors }}</label>
+            <label>Type of store{{ form.store_type }}{{ form.store_type.errors }}<small>{{ form.store_type.help_text }}</small></label>
+            <div class="trial-form-row"><label>First name{{ form.first_name }}{{ form.first_name.errors }}</label><label>Last name{{ form.last_name }}{{ form.last_name.errors }}</label></div>
+            <div class="trial-form-row"><label>Username{{ form.username }}{{ form.username.errors }}</label><label>Email{{ form.email }}{{ form.email.errors }}</label></div>
+            <div class="trial-form-row"><label>Password{{ form.password1 }}{{ form.password1.errors }}</label><label>Confirm password{{ form.password2 }}{{ form.password2.errors }}</label></div>
+            <button class="primary login-submit">Create my free Trial store →</button>
+            <p class="trial-fine-print">The 30-day period starts immediately. Trial accounts include one store administrator login and no additional staff seats.</p>
+            <div class="trial-links"><a href="{% url 'login' %}">Already have an account?</a><a href="{% url 'feature_guide' %}">Review plans and features</a></div>
+        </form>
+    </section>
+</main>
+</body>
+</html>

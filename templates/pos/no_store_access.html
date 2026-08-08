@@ -1,0 +1,6 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>No store access — POSitive!</title><link rel="stylesheet" href="{% static 'pos/css/app.css' %}"></head>
+<body class="login-body"><main class="login-shell"><section class="login-story"><a class="brand login-brand" href="/">{% include 'includes/brand_logo.html' %}</a><div class="story-copy"><span class="eyebrow light">Account ready</span><h1>No store has been assigned yet.</h1><p>Your account needs a store assignment before the workspace becomes available.</p></div></section><section class="login-panel"><div class="login-card"><span class="eyebrow">Access pending</span><h2>Your store access is being prepared.</h2><p>Your login is valid, but it currently has no store memberships.</p><form action="{% url 'logout' %}" method="post">{% csrf_token %}<button class="primary login-submit">Sign out</button></form></div></section></main></body>
+</html>

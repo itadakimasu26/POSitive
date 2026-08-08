@@ -1,0 +1,7 @@
+{% extends 'pos/base.html' %}
+{% block title %}Store unavailable — POSitive!{% endblock %}
+{% block section %}Subscription{% endblock %}
+{% block page_title %}Store access is {{ store.subscription_status|lower }}{% endblock %}
+{% block content %}
+<section class="receipt-wrap"><article class="receipt-card blocked-card"><span class="stat-icon orange">!</span><h2>{{ store.business_name }} cannot process sales right now.</h2><p>The subscription is {{ store.subscription_status|lower }}{% if store.subscription_end %} as of {{ store.subscription_end|date:'F j, Y' }}{% endif %}. Please contact POSitive! support to restore access.</p>{% if request.available_memberships|length > 1 %}<p>You can select another assigned store from the store switcher.</p>{% endif %}<a class="secondary" href="{% url 'dashboard' %}">Return to overview</a></article></section>
+{% endblock %}

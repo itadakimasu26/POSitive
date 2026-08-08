@@ -1,0 +1,35 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Sign in — POSitive!</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{% static 'pos/css/app.css' %}">
+</head>
+<body class="login-body">
+<main class="login-shell">
+    <section class="login-story">
+        <a class="brand login-brand" href="/">{% include 'includes/brand_logo.html' %}</a>
+        <div class="story-copy"><span class="eyebrow light">Simple. Reliable. Yours.</span><h1>Run your store with confidence.</h1><p>Sales, products, stock, reports, and your team—all in one focused workspace.</p></div>
+        <div class="story-metrics"><div><strong>Fast</strong><small>Checkout</small></div><div><strong>Live</strong><small>Inventory</small></div><div><strong>Clear</strong><small>Reports</small></div></div>
+    </section>
+    <section class="login-panel">
+        <form method="post" class="login-card">
+            {% csrf_token %}
+            <span class="eyebrow">Welcome back</span><h2>Sign in to POSitive!</h2><p>Use the account you created during setup.</p>
+            {% if form.errors %}<div class="form-error">Your username or password is incorrect.</div>{% endif %}
+            <label>Username{{ form.username }}</label>
+            <label>Password{{ form.password }}</label>
+            <a class="login-recovery" href="{% url 'password_reset' %}">Forgot your password?</a>
+            {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
+            <button class="primary login-submit">Sign in →</button>
+            <small class="login-help">Already assigned to a store? Use the credentials from your store administrator.</small>
+        </form>
+        <div class="login-onboarding"><span>New to POSitive!?</span><a class="primary trial-cta" href="{% url 'start_trial' %}">Start a 30-day free trial</a><a class="secondary" href="{% url 'feature_guide' %}">Compare Starter & Pro</a><a class="guide-download" href="{% url 'feature_guide_pdf' %}">Download feature guide (PDF) ↓</a></div>
+    </section>
+</main>
+</body>
+</html>

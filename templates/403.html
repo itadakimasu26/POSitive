@@ -1,0 +1,21 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Access denied — POSitive!</title>
+    <link rel="stylesheet" href="{% static 'pos/css/app.css' %}">
+</head>
+<body class="login-body">
+<main class="login-shell">
+    <section class="login-story">
+        <a class="brand login-brand" href="{% url 'dashboard' %}">{% include 'includes/brand_logo.html' %}</a>
+        <div class="story-copy"><span class="eyebrow light">Role-based access</span><h1>This area is protected.</h1><p>Each account can open only the tools included in its assigned store role.</p></div>
+    </section>
+    <section class="login-panel">
+        <div class="login-card"><span class="eyebrow">Access denied</span><h2>Your current role does not include this action.</h2><p>Ask a store administrator if your responsibilities require different access.</p><a class="primary login-submit" href="{% url 'dashboard' %}">Return to overview →</a></div>
+    </section>
+</main>
+</body>
+</html>
