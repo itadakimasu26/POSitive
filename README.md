@@ -104,6 +104,17 @@ python manage.py send_scheduled_reports
 
 Run it daily with Windows Task Scheduler, cron, or the scheduler provided by your hosting platform. Expired and suspended stores are skipped automatically.
 
+## Independent backup verification
+
+Create an encrypted off-provider logical export from a trusted operator machine, then prove that it restores into an isolated temporary database:
+
+```powershell
+python manage.py backup_database --output D:\secure-backups\positive-YYYY-MM-DD.json.gz
+python manage.py verify_database_backup --input D:\secure-backups\positive-YYYY-MM-DD.json.gz
+```
+
+See `docs/backup-restore-runbook.md` for the production-provider checklist, storage requirements, and restore-test recordkeeping. Do not use Vercel's temporary function filesystem as a backup destination.
+
 ## Password-reset email
 
 The local default prints mail to the console. Production must use a real email provider. For Gmail SMTP, create a Google App Password and set the backend to `django.core.mail.backends.smtp.EmailBackend`, host `smtp.gmail.com`, port `587`, the Gmail address, App Password, TLS enabled, and a matching `DJANGO_DEFAULT_FROM_EMAIL`. Never commit or paste the App Password into source code.
@@ -121,6 +132,7 @@ The local default prints mail to the console. Production must use a real email p
 - `scripts/generate_feature_guide.py` — reproducible PDF generator
 - `docs/pro-multi-store.md` — Pro business rules, tenant flow, owner-dashboard metrics, and maintenance checklist
 - `docs/dining-workflow.md` — business-category eligibility and enforcement for dine-in, take-out, and service charges
+- `docs/backup-restore-runbook.md` — provider checks, independent exports, and isolated restore verification
 - `positive_pos/settings.py` — Django and SQLite configuration
 
 ## Production note

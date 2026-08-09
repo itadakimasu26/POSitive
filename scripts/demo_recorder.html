@@ -1,19 +1,14 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><title>POSitive 60-second product tour recorder</title><style>html,body{margin:0;background:#071711;color:#fff;font-family:"Segoe UI",Arial,sans-serif}canvas{display:block;width:100vw;height:auto}</style></head>
+<head><meta charset="utf-8"><title>POSitive 60-second story recorder</title><style>html,body{margin:0;background:#071711;color:#fff;font-family:"Segoe UI",Arial,sans-serif}canvas{display:block;width:100vw;height:auto}</style></head>
 <body><canvas id="tour" width="1280" height="720"></canvas>
 <script>
 const canvas = document.getElementById('tour');
 const context = canvas.getContext('2d');
 const query = new URLSearchParams(location.search);
 const recordingDuration = Math.max(1000, Number(query.get('duration') || 60000));
-const scenes = [
-  { image:'../static/pos/images/product/dashboard.webp', eyebrow:'LIVE STORE OVERVIEW', title:'Start every day with a clear view', copy:'See sales, transactions, average orders, low stock, and recent activity in one place.' },
-  { image:'../static/pos/images/product/checkout.webp', eyebrow:'FAST CHECKOUT', title:'Move from product to payment quickly', copy:'Search or scan products, keep the order visible, and validate stock before completing a sale.' },
-  { image:'../static/pos/images/product/inventory.webp', eyebrow:'SMART INVENTORY', title:'Know what is in stock and what needs attention', copy:'Manage cafe, grocery, fashion, gadget, pet, hardware, cosmetics, and general-merchandise products.' },
-  { image:'../static/pos/images/product/reports.webp', eyebrow:'REPORTS AND AUDIT', title:'Turn every transaction into a useful decision', copy:'Review revenue, profit, payments, top products, staff performance, and exportable audit activity.' },
-];
-const loadedImages = [];
+const sceneCount = 6;
+const assets = {};
 window.recordingState = 'loading';
 
 function loadImage(source) {
@@ -25,84 +20,468 @@ function loadImage(source) {
   });
 }
 
-function roundedRect(x,y,width,height,radius) {
+function roundedRect(x, y, width, height, radius) {
   context.beginPath();
-  context.roundRect(x,y,width,height,radius);
+  context.roundRect(x, y, width, height, radius);
 }
 
-function wrapText(text,x,y,maxWidth,lineHeight) {
-  const words=text.split(' '); let line=''; let cursor=y;
-  for (const word of words) {
-    const test=`${line}${word} `;
-    if (context.measureText(test).width > maxWidth && line) { context.fillText(line.trim(),x,cursor); line=`${word} `; cursor+=lineHeight; }
-    else line=test;
+function fillRounded(x, y, width, height, radius, fill, stroke = null, lineWidth = 1) {
+  roundedRect(x, y, width, height, radius);
+  context.fillStyle = fill;
+  context.fill();
+  if (stroke) {
+    context.strokeStyle = stroke;
+    context.lineWidth = lineWidth;
+    context.stroke();
   }
-  context.fillText(line.trim(),x,cursor);
 }
 
-function drawCover(image,x,y,width,height,zoom,offsetX) {
-  const scale=Math.max(width/image.width,height/image.height)*zoom;
-  const sourceWidth=width/scale;
-  const sourceHeight=height/scale;
-  const sourceX=Math.max(0,Math.min(image.width-sourceWidth,(image.width-sourceWidth)*(0.35+offsetX)));
-  const sourceY=Math.max(0,(image.height-sourceHeight)*0.12);
-  context.drawImage(image,sourceX,sourceY,sourceWidth,sourceHeight,x,y,width,height);
+function wrapText(text, x, y, maxWidth, lineHeight) {
+  const words = text.split(' ');
+  let line = '';
+  let cursor = y;
+  for (const word of words) {
+    const test = `${line}${word} `;
+    if (context.measureText(test).width > maxWidth && line) {
+      context.fillText(line.trim(), x, cursor);
+      line = `${word} `;
+      cursor += lineHeight;
+    } else {
+      line = test;
+    }
+  }
+  context.fillText(line.trim(), x, cursor);
 }
+
+function easeOut(value) {
+  return 1 - Math.pow(1 - Math.max(0, Math.min(1, value)), 3);
+}
+
+function drawImageCover(image, x, y, width, height, offsetX = 0, offsetY = 0) {
+  const scale = Math.max(width / image.width, height / image.height);
+  const sourceWidth = width / scale;
+  const sourceHeight = height / scale;
+  const sourceX = Math.max(0, Math.min(image.width - sourceWidth, (image.width - sourceWidth) / 2 + offsetX));
+  const sourceY = Math.max(0, Math.min(image.height - sourceHeight, (image.height - sourceHeight) / 2 + offsetY));
+  context.drawImage(image, sourceX, sourceY, sourceWidth, sourceHeight, x, y, width, height);
+}
+
+function drawBackdrop(color = '#071711', glow = '#1eb981') {
+  context.fillStyle = color;
+  context.fillRect(0, 0, 1280, 720);
+  const gradient = context.createRadialGradient(1050, 90, 20, 1050, 90, 760);
+  gradient.addColorStop(0, `${glow}44`);
+  gradient.addColorStop(1, `${glow}00`);
+  context.fillStyle = gradient;
+  context.fillRect(0, 0, 1280, 720);
+}
+
+function drawEnergyRays(centerX, centerY, local, color = '#54e7b3') {
+  const energy = easeOut(local / .28);
+  context.save();
+  context.translate(centerX, centerY);
+  context.rotate(local * .18);
+  context.globalAlpha = .12 * energy;
+  context.strokeStyle = color;
+  context.lineWidth = 4;
+  for (let index = 0; index < 22; index++) {
+    const angle = (Math.PI * 2 * index) / 22;
+    const inner = 160 + (index % 3) * 22;
+    const outer = 510 + Math.sin(index * 2.7) * 75;
+    context.beginPath();
+    context.moveTo(Math.cos(angle) * inner, Math.sin(angle) * inner);
+    context.lineTo(Math.cos(angle) * outer, Math.sin(angle) * outer);
+    context.stroke();
+  }
+  context.restore();
+}
+
+function drawSparkles(local, count = 24) {
+  context.save();
+  for (let index = 0; index < count; index++) {
+    const phase = (local * (0.32 + (index % 4) * .06) + index * .071) % 1;
+    const x = 35 + ((index * 137) % 1210);
+    const y = 100 + ((index * 83 + phase * 260) % 550);
+    const radius = 2 + (index % 3) * 1.5;
+    context.globalAlpha = .18 + .52 * Math.sin(phase * Math.PI);
+    context.fillStyle = index % 3 === 0 ? '#ffffff' : '#50dfad';
+    context.beginPath(); context.arc(x, y, radius, 0, Math.PI * 2); context.fill();
+  }
+  context.restore();
+}
+
+function drawConfetti(local) {
+  const colors = ['#0c8f69', '#3bd29c', '#0b285f', '#f2c94c'];
+  context.save();
+  for (let index = 0; index < 34; index++) {
+    const x = (index * 109 + Math.sin(index * 3.4) * 40 + 1280) % 1280;
+    const y = ((local * 980 + index * 71) % 880) - 120;
+    context.translate(x, y);
+    context.rotate(local * 6 + index);
+    context.fillStyle = colors[index % colors.length];
+    context.globalAlpha = .72;
+    context.fillRect(-4, -9, 8, 18);
+    context.setTransform(1, 0, 0, 1, 0, 0);
+  }
+  context.restore();
+}
+
+function drawBrandHeader(sceneIndex, label, dark = true) {
+  context.fillStyle = dark ? '#ffffff' : '#0b285f';
+  context.font = '800 25px "Segoe UI",Arial';
+  context.fillText('POS', 48, 62);
+  context.fillStyle = '#2fcf9c';
+  context.fillText('itive!', 95, 62);
+  context.fillStyle = dark ? 'rgba(226,244,237,.72)' : '#65746e';
+  context.font = '700 12px "Segoe UI",Arial';
+  context.fillText('POINT OF SALE', 49, 83);
+  context.textAlign = 'right';
+  context.font = '700 13px "Segoe UI",Arial';
+  context.fillText(label, 1230, 57);
+  context.fillStyle = dark ? 'rgba(226,244,237,.5)' : '#8b9994';
+  context.fillText(`${sceneIndex + 1} / ${sceneCount}`, 1230, 80);
+  context.textAlign = 'left';
+}
+
+function drawStoryCopy(eyebrow, title, copy, x = 70, y = 138, maxWidth = 510, dark = true) {
+  context.fillStyle = '#41d2a0';
+  context.font = '800 15px "Segoe UI",Arial';
+  context.fillText(eyebrow, x, y);
+  context.fillStyle = dark ? '#ffffff' : '#17221f';
+  context.font = '800 43px "Segoe UI",Arial';
+  wrapText(title, x, y + 58, maxWidth, 49);
+  const titleLines = Math.ceil(context.measureText(title).width / maxWidth);
+  context.fillStyle = dark ? 'rgba(235,248,243,.82)' : '#62716b';
+  context.font = '500 21px "Segoe UI",Arial';
+  wrapText(copy, x, y + 83 + Math.max(1, titleLines) * 48, maxWidth, 31);
+}
+
+function drawPerson(x, y, scale = 1, mood = 'stressed') {
+  context.save();
+  context.translate(x, y);
+  context.scale(scale, scale);
+  context.fillStyle = 'rgba(0,0,0,.16)';
+  context.beginPath(); context.ellipse(0, 150, 78, 16, 0, 0, Math.PI * 2); context.fill();
+  context.fillStyle = '#f2b990';
+  context.beginPath(); context.arc(0, -28, 43, 0, Math.PI * 2); context.fill();
+  context.fillStyle = '#233a35';
+  context.beginPath(); context.arc(-4, -42, 44, Math.PI, Math.PI * 1.92); context.lineTo(35, -17); context.quadraticCurveTo(5, -34, -45, -20); context.fill();
+  context.fillStyle = '#f2b990';
+  fillRounded(-12, 6, 24, 28, 8, '#f2b990');
+  context.fillStyle = mood === 'stressed' ? '#c9794f' : '#147d60';
+  context.beginPath(); context.moveTo(-58, 116); context.quadraticCurveTo(-50, 22, 0, 12); context.quadraticCurveTo(50, 22, 58, 116); context.lineTo(68, 148); context.lineTo(-68, 148); context.closePath(); context.fill();
+  context.strokeStyle = '#f2b990'; context.lineWidth = 17; context.lineCap = 'round';
+  context.beginPath();
+  if (mood === 'stressed') { context.moveTo(-44, 47); context.lineTo(-78, 96); context.lineTo(-42, 113); context.moveTo(44, 47); context.lineTo(77, 93); context.lineTo(48, 111); }
+  else { context.moveTo(-44, 48); context.lineTo(-76, 103); context.moveTo(44, 48); context.lineTo(75, 86); }
+  context.stroke();
+  context.strokeStyle = '#243631'; context.lineWidth = 4; context.lineCap = 'round';
+  context.beginPath();
+  if (mood === 'stressed') {
+    context.moveTo(-23, -27); context.lineTo(-9, -32); context.moveTo(9, -32); context.lineTo(23, -27);
+    context.moveTo(-16, -5); context.quadraticCurveTo(0, -15, 16, -5);
+    context.stroke();
+    context.fillStyle = '#66cbb0'; context.beginPath(); context.ellipse(39, -4, 5, 10, -.15, 0, Math.PI * 2); context.fill();
+  } else {
+    context.moveTo(-23, -31); context.lineTo(-9, -31); context.moveTo(9, -31); context.lineTo(23, -31);
+    context.moveTo(-17, -9); context.quadraticCurveTo(0, 8, 17, -9); context.stroke();
+  }
+  context.restore();
+}
+
+function drawShelves(x, y, width, height) {
+  fillRounded(x, y, width, height, 18, '#e9efec', '#cbd8d3', 2);
+  context.fillStyle = '#9aaba5';
+  for (let row = 1; row < 4; row++) context.fillRect(x + 14, y + row * (height / 4), width - 28, 5);
+  const colors = ['#e3a26f', '#7eaa9b', '#d8c05d', '#6d8ea8', '#d88773'];
+  for (let row = 0; row < 4; row++) {
+    for (let column = 0; column < 6; column++) {
+      const boxWidth = 42 + (column % 2) * 8;
+      fillRounded(x + 25 + column * 57, y + 23 + row * (height / 4), boxWidth, 47, 5, colors[(row + column) % colors.length]);
+      context.fillStyle = 'rgba(255,255,255,.62)'; context.fillRect(x + 31 + column * 57, y + 34 + row * (height / 4), boxWidth - 12, 5);
+    }
+  }
+}
+
+function drawClipboard(x, y, width, height, progress) {
+  context.save(); context.translate(x, y); context.rotate(-.035);
+  fillRounded(0, 0, width, height, 12, '#f7f4e9', '#d8d2bb', 2);
+  fillRounded(width / 2 - 48, -9, 96, 29, 8, '#81786a');
+  context.fillStyle = '#293a35'; context.font = '800 18px "Segoe UI",Arial'; context.fillText('STOCK COUNT', 28, 58);
+  context.font = '600 14px "Segoe UI",Arial';
+  for (let row = 0; row < 7; row++) {
+    const yy = 92 + row * 39;
+    context.fillStyle = '#88948f'; context.fillText(['Coffee beans','Bottled water','Oat milk','Croissants','Tea bags','Paper cups','Syrups'][row], 28, yy);
+    context.strokeStyle = '#c8d0cc'; context.beginPath(); context.moveTo(28, yy + 11); context.lineTo(width - 28, yy + 11); context.stroke();
+    context.fillStyle = row < Math.floor(progress * 8) ? '#c7593f' : '#b9c2be'; context.textAlign = 'right'; context.fillText(row < Math.floor(progress * 8) ? ['14?','38','9?','6','21','64?','12'][row] : '—', width - 30, yy); context.textAlign = 'left';
+  }
+  context.restore();
+}
+
+function drawManualScene(local) {
+  drawBackdrop('#0d1916', '#b96a3c');
+  drawBrandHeader(0, '9:47 PM · STORE CLOSED');
+  drawStoryCopy('THE DOORS ARE LOCKED', "The work isn't over.", 'Mika is still counting every shelf by hand—long after the last customer left.', 68, 145, 490);
+  const bob = Math.sin(local * Math.PI * 4) * 3;
+  drawPerson(338, 480 + bob, .92, 'stressed');
+  drawShelves(760, 122, 450, 520);
+  drawClipboard(545, 240, 285, 345, Math.min(1, local * 1.6));
+  fillRounded(76, 547, 310, 55, 12, '#50271fee', '#a95c48');
+  context.fillStyle = '#f5a68e'; context.font = '900 13px "Segoe UI",Arial'; context.fillText('LATE-NIGHT INVENTORY', 96, 570);
+  context.fillStyle = '#fff'; context.font = '800 19px "Segoe UI",Arial'; context.fillText('2 hours and counting…', 96, 593);
+  const clockPulse = 1 + Math.sin(local * Math.PI * 5) * .03;
+  context.save(); context.translate(1115, 82); context.scale(clockPulse, clockPulse);
+  fillRounded(-75, -23, 150, 46, 99, '#2c1813', '#9d553f', 2);
+  context.fillStyle = '#ffb29d'; context.font = '900 17px "Segoe UI",Arial'; context.textAlign = 'center'; context.fillText('9:47 PM', 0, 6); context.textAlign = 'left'; context.restore();
+}
+
+function drawProblemCard(x, y, title, value, color, delay, local) {
+  const reveal = easeOut((local - delay) / .22);
+  context.save(); context.globalAlpha = reveal; context.translate(0, 30 * (1 - reveal));
+  fillRounded(x, y, 240, 126, 15, '#ffffff', '#e1e8e5', 2);
+  fillRounded(x + 20, y + 20, 34, 34, 9, `${color}20`);
+  context.fillStyle = color; context.font = '900 20px "Segoe UI",Arial'; context.textAlign = 'center'; context.fillText('!', x + 37, y + 45); context.textAlign = 'left';
+  context.fillStyle = '#65736e'; context.font = '700 13px "Segoe UI",Arial'; context.fillText(title, x + 70, y + 37);
+  context.fillStyle = '#17221f'; context.font = '800 25px "Segoe UI",Arial'; context.fillText(value, x + 20, y + 91);
+  context.restore();
+}
+
+function drawProblemsScene(local) {
+  drawBackdrop('#161310', '#c85b3f');
+  drawBrandHeader(1, 'THE REAL COST');
+  drawStoryCopy('ONE WRONG NUMBER', 'A mismatch becomes a missed sale.', 'The shelf is empty while the notebook says six are available. The customer walks away.', 68, 145, 490);
+  drawPerson(315, 512, .86, 'stressed');
+  const reveal = easeOut((local - .08) / .24);
+  context.save(); context.globalAlpha = reveal; context.translate(45 * (1 - reveal), 0);
+  fillRounded(590, 128, 615, 477, 22, '#fffaf6', '#c66b50', 3);
+  context.fillStyle = '#7d8b86'; context.font = '800 13px "Segoe UI",Arial'; context.fillText('CUSTOMER AT CHECKOUT', 620, 166);
+  fillRounded(620, 190, 555, 91, 14, '#ffffff', '#e6ddd7', 2);
+  fillRounded(642, 209, 54, 54, 10, '#dce9e4');
+  context.fillStyle = '#234039'; context.beginPath(); context.arc(669, 227, 11, 0, Math.PI * 2); context.fill();
+  context.beginPath(); context.arc(669, 254, 19, Math.PI, Math.PI * 2); context.fill();
+  context.fillStyle = '#17221f'; context.font = '800 19px "Segoe UI",Arial'; context.fillText('“Do you have oat milk?”', 718, 226);
+  context.fillStyle = '#697772'; context.font = '600 15px "Segoe UI",Arial'; context.fillText('The system says 6. The shelf has 0.', 718, 254);
+  fillRounded(620, 308, 555, 108, 14, '#2b1d18', '#744433', 2);
+  context.fillStyle = '#f2aa8f'; context.font = '900 14px "Segoe UI",Arial'; context.fillText('INVENTORY MISMATCH', 644, 342);
+  context.fillStyle = '#fff'; context.font = '900 30px "Segoe UI",Arial'; context.fillText('6 on paper  ≠  0 on shelf', 644, 383);
+  const stampScale = 1 + Math.sin(local * Math.PI * 5) * .025;
+  context.save(); context.translate(900, 485); context.rotate(-.035); context.scale(stampScale, stampScale);
+  fillRounded(-215, -43, 430, 86, 14, '#b84432', '#ffb09c', 3);
+  context.fillStyle = '#fff'; context.font = '900 28px "Segoe UI",Arial'; context.textAlign = 'center'; context.fillText('LOST SALE', 0, -3);
+  context.font = '700 15px "Segoe UI",Arial'; context.fillText('and one disappointed customer', 0, 23); context.textAlign = 'left'; context.restore();
+  context.restore();
+}
+
+function drawRescueScene(local) {
+  if (local < .105) {
+    drawBackdrop('#0b1714', '#b96a3c');
+    drawBrandHeader(2, 'THE TURNING POINT');
+    context.fillStyle = '#ffffff'; context.font = '800 49px "Segoe UI",Arial'; context.textAlign = 'center';
+    context.fillText('There has to be a better way.', 640, 335);
+    context.fillStyle = '#b9ccc5'; context.font = '600 21px "Segoe UI",Arial'; context.fillText('Mika is ready to stop counting the past.', 640, 380);
+    context.textAlign = 'left';
+    return;
+  }
+  drawBackdrop('#04271c', '#2ee3a6');
+  const revealLocal = (local - .105) / .895;
+  drawEnergyRays(890, 350, revealLocal);
+  drawSparkles(revealLocal, 34);
+  drawBrandHeader(2, 'THE TURNAROUND');
+  const reveal = easeOut(revealLocal / .34);
+  context.save(); context.globalAlpha = reveal; context.translate(80 * (1 - reveal), 0);
+  drawStoryCopy('THEN MIKA FINDS POSITIVE!', 'Suddenly, everything clicks.', 'Checkout, stock, and reports finally work together in one clear workspace.', 68, 155, 490);
+  context.restore();
+  const panelX = 610 + 90 * (1 - reveal);
+  fillRounded(panelX, 125, 600, 475, 22, '#ffffff', '#79d3b1', 3);
+  context.save(); roundedRect(panelX + 14, 139, 572, 447, 15); context.clip(); drawImageCover(assets.dashboard, panelX + 14, 139, 572, 447, -70, -20); context.restore();
+  context.strokeStyle = '#48d2a0'; context.lineWidth = 4; roundedRect(panelX, 125, 600, 475, 22); context.stroke();
+  const pulse = 1 + Math.sin(local * Math.PI * 8) * .035;
+  context.save(); context.translate(panelX + 530, 171); context.scale(pulse, pulse); fillRounded(-64, -20, 128, 40, 99, '#24c98f', '#8ff1ca', 2); context.fillStyle = '#fff'; context.font = '900 13px "Segoe UI",Arial'; context.textAlign = 'center'; context.fillText('ALL CONNECTED', 0, 5); context.textAlign = 'left'; context.restore();
+  fillRounded(80, 500, 430, 86, 15, '#0f3328', '#28604d');
+  context.fillStyle = '#77e4bd'; context.font = '800 14px "Segoe UI",Arial'; context.fillText('BEFORE  →  AFTER', 105, 533);
+  context.fillStyle = '#fff'; context.font = '700 19px "Segoe UI",Arial'; context.fillText('Paper guesswork  →  live clarity', 105, 565);
+}
+
+function drawProductFlow(local) {
+  const stages = [
+    { x: 80, title: '1. Select', copy: 'Search or scan' },
+    { x: 80, title: '2. Complete', copy: 'Validate and charge' },
+    { x: 80, title: '3. Updated', copy: 'Stock reflects the sale' },
+  ];
+  stages.forEach((stage, index) => {
+    const active = local >= .12 + index * .22;
+    fillRounded(stage.x, 390 + index * 72, 420, 55, 12, active ? '#173d31' : '#10251f', active ? '#43d2a0' : '#29463c', 2);
+    context.fillStyle = active ? '#72e1b9' : '#70847d'; context.font = '800 15px "Segoe UI",Arial'; context.fillText(stage.title, stage.x + 18, 423 + index * 72);
+    context.fillStyle = active ? '#ffffff' : '#879790'; context.font = '600 14px "Segoe UI",Arial'; context.fillText(stage.copy, stage.x + 135, 423 + index * 72);
+  });
+}
+
+function drawCheckoutScene(local) {
+  drawBackdrop('#03291d', '#28d99d');
+  drawSparkles(local, 18);
+  drawBrandHeader(3, 'PROOF 1 · AUTOMATIC STOCK');
+  drawStoryCopy('SELL IT ONCE. UPDATE IT EVERYWHERE.', 'Checkout does the counting.', 'Mika completes the sale. POSitive! validates the quantity and updates inventory instantly.', 68, 140, 480);
+  drawProductFlow(local);
+  fillRounded(570, 125, 640, 488, 22, '#ffffff', '#5ec49f', 3);
+  context.save(); roundedRect(584, 139, 612, 460, 15); context.clip(); drawImageCover(assets.checkout, 584, 139, 612, 460, 10, -10); context.restore();
+  const scanY = 180 + (local % 1) * 330;
+  const scanGradient = context.createLinearGradient(0, scanY - 40, 0, scanY + 10);
+  scanGradient.addColorStop(0, 'rgba(58,215,159,0)'); scanGradient.addColorStop(1, 'rgba(58,215,159,.34)');
+  context.fillStyle = scanGradient; context.fillRect(590, scanY - 40, 600, 50);
+  context.strokeStyle = '#41d2a0'; context.lineWidth = 3; context.beginPath(); context.moveTo(590, scanY); context.lineTo(1190, scanY); context.stroke();
+  const confirmation = easeOut((local - .62) / .18);
+  context.save(); context.globalAlpha = confirmation; context.translate(0, 28 * (1 - confirmation));
+  fillRounded(790, 522, 360, 72, 14, '#0c8f69', '#8aebc5', 2);
+  context.fillStyle = '#baf4dc'; context.font = '800 12px "Segoe UI",Arial'; context.fillText('OAT MILK · LIVE STOCK', 815, 547);
+  context.fillStyle = '#fff'; context.font = '900 25px "Segoe UI",Arial'; context.fillText('28', 815, 579);
+  context.fillStyle = '#8fe8c5'; context.fillText('→', 868, 579);
+  context.fillStyle = '#fff'; context.fillText('27', 910, 579);
+  context.font = '900 14px "Segoe UI",Arial'; context.fillText('✓ UPDATED', 990, 577);
+  context.restore();
+}
+
+function drawInventoryScene(local) {
+  drawBackdrop('#04291d', '#36dda4');
+  drawEnergyRays(980, 360, local, '#7af0c4');
+  drawSparkles(local, 22);
+  drawBrandHeader(4, 'PROOF 2 · ACTIONABLE ALERTS');
+  drawStoryCopy('KNOW BEFORE YOU RUN OUT.', 'The next action is already clear.', "Alerts show what needs attention. Reports turn today's sales into tomorrow's decisions.", 68, 140, 500);
+  fillRounded(555, 126, 655, 490, 22, '#ffffff', '#5ec49f', 3);
+  context.save(); roundedRect(569, 140, 627, 462, 15); context.clip(); drawImageCover(assets.inventory, 569, 140, 627, 462, -20, -5); context.restore();
+  const notices = [
+    { y: 388, label: 'LOW STOCK', value: 'Chocolate Cookie · 5 left', delay: .15 },
+    { y: 461, label: 'REORDER', value: 'Croissant · 7 left', delay: .35 },
+    { y: 534, label: 'READY', value: 'Adjustment recorded', delay: .55 },
+  ];
+  notices.forEach((notice, index) => {
+    const show = easeOut((local - notice.delay) / .18);
+    context.save(); context.globalAlpha = show; context.translate(-35 * (1 - show), 0);
+    fillRounded(75, notice.y, 430, 58, 12, index === 2 ? '#173f32' : '#38251d', index === 2 ? '#3a9773' : '#7c4c39', 2);
+    context.fillStyle = index === 2 ? '#69dbae' : '#eda486'; context.font = '800 12px "Segoe UI",Arial'; context.fillText(notice.label, 95, notice.y + 24);
+    context.fillStyle = '#fff'; context.font = '700 15px "Segoe UI",Arial'; context.fillText(notice.value, 190, notice.y + 35);
+    context.restore();
+  });
+}
+
+function drawOutcomeScene(local) {
+  drawBackdrop('#eef8f4', '#3bd29c');
+  drawConfetti(local);
+  drawBrandHeader(5, 'CLOSE ON TIME. GROW WITH CONFIDENCE.', false);
+  drawPerson(215, 480, 1.08, 'happy');
+  fillRounded(93, 570, 250, 48, 99, '#ffffff', '#c9e7dc');
+  context.fillStyle = '#147d60'; context.font = '800 15px "Segoe UI",Arial'; context.textAlign = 'center'; context.fillText('Mika leaves on time.', 218, 600); context.textAlign = 'left';
+  const reveal = easeOut(local / .32);
+  context.save(); context.globalAlpha = reveal; context.translate(50 * (1 - reveal), 0);
+  context.drawImage(assets.logo, 440, 112, 700, 214);
+  context.fillStyle = '#17221f'; context.font = '800 43px "Segoe UI",Arial'; context.fillText('Stop counting the past.', 510, 393);
+  context.fillStyle = '#0c8f69'; context.fillText("Start running what's next.", 510, 449);
+  context.fillStyle = '#63716c'; context.font = '500 20px "Segoe UI",Arial'; context.fillText('Checkout, inventory, and reports—finally in sync.', 514, 492);
+  const ctaPulse = 1 + Math.sin(local * Math.PI * 6) * .025;
+  context.save(); context.translate(650, 560); context.scale(ctaPulse, ctaPulse); fillRounded(-140, -30, 280, 60, 12, '#0c8f69');
+  context.fillStyle = '#ffffff'; context.font = '800 18px "Segoe UI",Arial'; context.textAlign = 'center'; context.fillText('START 30 DAYS FREE', 0, 7); context.textAlign = 'left';
+  context.restore();
+  context.fillStyle = '#6d7874'; context.font = '600 14px "Segoe UI",Arial'; context.fillText('No card required', 820, 566);
+  context.restore();
+}
+
+const renderers = [drawManualScene, drawProblemsScene, drawRescueScene, drawCheckoutScene, drawInventoryScene, drawOutcomeScene];
 
 function render(elapsed) {
-  const total=recordingDuration;
-  const sceneLength=total/scenes.length;
-  const index=Math.min(scenes.length-1,Math.floor(elapsed/sceneLength));
-  const local=(elapsed-index*sceneLength)/sceneLength;
-  const scene=scenes[index];
-  const image=loadedImages[index];
-  context.fillStyle='#071711'; context.fillRect(0,0,1280,720);
-  const gradient=context.createRadialGradient(1080,80,20,1080,80,720);
-  gradient.addColorStop(0,'rgba(39,190,139,.27)'); gradient.addColorStop(1,'rgba(7,23,17,0)');
-  context.fillStyle=gradient; context.fillRect(0,0,1280,720);
-  context.save(); roundedRect(45,117,1190,565,22); context.clip();
-  drawCover(image,45,117,1190,565,1.015+local*.018,(local-.5)*.06);
-  const shade=context.createLinearGradient(0,117,0,470); shade.addColorStop(0,'rgba(5,20,15,.88)'); shade.addColorStop(.7,'rgba(5,20,15,.05)');
-  context.fillStyle=shade; context.fillRect(45,117,1190,400); context.restore();
-  context.strokeStyle='rgba(185,242,220,.32)'; context.lineWidth=2; roundedRect(45,117,1190,565,22); context.stroke();
+  const sceneLength = recordingDuration / sceneCount;
+  const sceneIndex = Math.min(sceneCount - 1, Math.floor(elapsed / sceneLength));
+  const local = Math.max(0, Math.min(1, (elapsed - sceneIndex * sceneLength) / sceneLength));
+  renderers[sceneIndex](local);
 
-  context.fillStyle='#6ce0b5'; context.font='800 14px "Segoe UI",Arial'; context.letterSpacing='2px'; context.fillText(scene.eyebrow,80,164); context.letterSpacing='0px';
-  context.fillStyle='#fff'; context.font='800 38px "Segoe UI",Arial'; context.fillText(scene.title,80,211);
-  context.fillStyle='rgba(235,248,243,.9)'; context.font='500 20px "Segoe UI",Arial'; wrapText(scene.copy,80,247,820,28);
-
-  context.fillStyle='#fff'; context.font='800 27px "Segoe UI",Arial'; context.fillText('POS',48,69); context.fillStyle='#48d2a0'; context.fillText('itive!',99,69);
-  context.fillStyle='rgba(226,244,237,.76)'; context.font='600 14px "Segoe UI",Arial'; context.fillText('POINT OF SALE',49,91);
-  context.textAlign='right'; context.fillStyle='rgba(226,244,237,.85)'; context.font='600 16px "Segoe UI",Arial'; context.fillText(`${index+1} / ${scenes.length}`,1232,72); context.textAlign='left';
-
-  context.fillStyle='rgba(255,255,255,.18)'; roundedRect(45,700,1190,6,6); context.fill();
-  context.fillStyle='#4bd4a2'; roundedRect(45,700,1190*Math.min(1,elapsed/total),6,6); context.fill();
+  const fade = Math.min(local / .055, (1 - local) / .055, 1);
+  if (fade < 1 && elapsed > 0 && elapsed < recordingDuration) {
+    const transition = sceneIndex >= 2 ? '47,207,156' : '7,23,17';
+    context.fillStyle = `rgba(${transition},${1 - Math.max(0, fade)})`;
+    context.fillRect(0, 0, 1280, 720);
+  }
+  context.fillStyle = 'rgba(255,255,255,.16)'; fillRounded(45, 700, 1190, 6, 6, 'rgba(255,255,255,.16)');
+  fillRounded(45, 700, 1190 * Math.min(1, elapsed / recordingDuration), 6, 6, '#3bd29c');
 }
 
 async function startRecording() {
-  loadedImages.push(...await Promise.all(scenes.map(scene => loadImage(scene.image))));
+  [assets.dashboard, assets.checkout, assets.inventory, assets.logo] = await Promise.all([
+    loadImage('../static/pos/images/product/dashboard.webp'),
+    loadImage('../static/pos/images/product/checkout.webp'),
+    loadImage('../static/pos/images/product/inventory.webp'),
+    loadImage('../static/pos/images/positive-logo-v2.png'),
+  ]);
   render(0);
-  if (!query.has('record')) { window.recordingState='preview'; return; }
-  const stream=canvas.captureStream(30);
-  const mimeTypes=['video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm'];
-  const mimeType=mimeTypes.find(type => MediaRecorder.isTypeSupported(type)) || '';
-  const recorder=new MediaRecorder(stream,{mimeType,videoBitsPerSecond:1800000});
-  const chunks=[]; recorder.ondataavailable=event => { if (event.data.size) chunks.push(event.data); };
-  recorder.onstop=async() => {
-    const blob=new Blob(chunks,{type:recorder.mimeType || 'video/webm'});
-    window.recordingState='uploading';
+  if (!query.has('record')) { window.recordingState = 'preview'; return; }
+
+  const audioContext = new AudioContext();
+  const [narrationData, musicData] = await Promise.all([
+    fetch('../static/pos/media/positive-demo-narration-v3.wav').then(response => {
+      if (!response.ok) throw new Error(`narration returned ${response.status}`);
+      return response.arrayBuffer();
+    }),
+    fetch('../static/pos/media/positive-demo-bgm-v2.wav').then(response => {
+      if (!response.ok) throw new Error(`music returned ${response.status}`);
+      return response.arrayBuffer();
+    }),
+  ]);
+  const [narrationBuffer, musicBuffer] = await Promise.all([
+    audioContext.decodeAudioData(narrationData),
+    audioContext.decodeAudioData(musicData),
+  ]);
+  const narrationSource = audioContext.createBufferSource();
+  const musicSource = audioContext.createBufferSource();
+  const narrationGain = audioContext.createGain();
+  const musicGain = audioContext.createGain();
+  const audioDestination = audioContext.createMediaStreamDestination();
+  narrationSource.buffer = narrationBuffer;
+  musicSource.buffer = musicBuffer;
+  narrationSource.connect(narrationGain).connect(audioDestination);
+  musicSource.connect(musicGain).connect(audioDestination);
+  narrationGain.gain.value = 1.05;
+  const audioStart = audioContext.currentTime + .05;
+  musicGain.gain.setValueAtTime(.52, audioStart);
+  musicGain.gain.linearRampToValueAtTime(.55, audioStart + 18.4);
+  musicGain.gain.linearRampToValueAtTime(.66, audioStart + 21.05);
+  musicGain.gain.linearRampToValueAtTime(.50, audioStart + 21.55);
+  musicGain.gain.setValueAtTime(.52, audioStart + 57.5);
+  musicGain.gain.linearRampToValueAtTime(0, audioStart + 60);
+  window.narrationDuration = narrationBuffer.duration;
+  window.musicDuration = musicBuffer.duration;
+
+  const stream = canvas.captureStream(30);
+  for (const audioTrack of audioDestination.stream.getAudioTracks()) stream.addTrack(audioTrack);
+  const mimeTypes = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
+  const mimeType = mimeTypes.find(type => MediaRecorder.isTypeSupported(type)) || '';
+  const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 2200000, audioBitsPerSecond: 128000 });
+  const chunks = [];
+  recorder.ondataavailable = event => { if (event.data.size) chunks.push(event.data); };
+  recorder.onstop = async () => {
+    const blob = new Blob(chunks, { type: recorder.mimeType || 'video/webm' });
+    window.recordingState = 'uploading';
     try {
-      const response=await fetch('/__capture',{method:'POST',headers:{'Content-Type':'video/webm'},body:blob});
+      const response = await fetch('/__capture', { method: 'POST', headers: { 'Content-Type': 'video/webm' }, body: blob });
       if (!response.ok) throw new Error(`capture server returned ${response.status}`);
-      window.recordingBytes=blob.size; window.recordingState='complete';
-    } catch (error) { window.recordingState=`error: ${error.message}`; }
+      window.recordingBytes = blob.size;
+      window.recordingState = 'complete';
+    } catch (error) {
+      window.recordingState = `error: ${error.message}`;
+    }
   };
-  window.recordingState='recording';
-  const started=performance.now(); recorder.start(1000);
-  const frameTimer=setInterval(() => {
-    const now=performance.now();
-    const elapsed=Math.min(recordingDuration,now-started); render(elapsed);
-    if (elapsed >= recordingDuration) { clearInterval(frameTimer); render(recordingDuration); recorder.stop(); }
-  },33);
+  await audioContext.resume();
+  window.recordingState = 'recording';
+  const started = performance.now();
+  recorder.start(1000);
+  narrationSource.start(audioStart);
+  musicSource.start(audioStart);
+  const frameTimer = setInterval(() => {
+    const elapsed = Math.min(recordingDuration, performance.now() - started);
+    render(elapsed);
+    if (elapsed >= recordingDuration) {
+      clearInterval(frameTimer);
+      render(recordingDuration);
+      recorder.stop();
+    }
+  }, 33);
 }
-startRecording().catch(error => { window.recordingState=`error: ${error.message}`; });
+
+startRecording().catch(error => { window.recordingState = `error: ${error.message}`; });
 </script></body></html>

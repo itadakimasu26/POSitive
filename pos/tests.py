@@ -1,8 +1,10 @@
 import csv
 import json
+import tempfile
 from datetime import timedelta
 from decimal import Decimal
 from io import StringIO
+from pathlib import Path
 from unittest.mock import patch
 
 from django.contrib.auth import authenticate
@@ -1253,9 +1255,21 @@ class PublicTrialAndGuideTests(TestCase):
         self.assertContains(response, "Multi-store command center")
         self.assertContains(response, "Owner super dashboard")
         self.assertContains(response, "every store sharing an administrator login must remain on Pro")
-        self.assertContains(response, "positive-60-second-demo.webm")
+        self.assertContains(response, "positive-60-second-story-v3.webm")
+        self.assertContains(response, "positive-demo-story-poster-v3.png")
+        self.assertContains(response, "positive-demo-captions-v3.vtt")
+        self.assertContains(response, "Sell it once. Stock updates instantly.")
+        self.assertContains(response, "60 seconds to a better close")
         self.assertContains(response, reverse("public_document", args=["privacy"]))
         self.assertContains(response, reverse("public_document", args=["security"]))
+        self.assertContains(response, "Local support daily, 9:00 AM–6:00 PM")
+        self.assertContains(response, "Secure browser-based access")
+        self.assertContains(response, 'rel="canonical"')
+        self.assertContains(response, 'property="og:title"')
+        self.assertContains(response, 'type="application/ld+json"')
+        self.assertNotContains(response, "Lifetime software updates")
+        self.assertNotContains(response, "ingredient or item stock tracking")
+        self.assertNotContains(response, "Cafe / food service")
 
     def test_demo_request_is_stored_and_honeypot_is_rejected(self):
         response = self.client.post(
@@ -1321,6 +1335,7 @@ class PublicTrialAndGuideTests(TestCase):
     def test_self_service_signup_creates_exactly_one_thirty_day_trial(self):
         today = timezone.localdate()
         signup_page = self.client.get(reverse("start_trial"))
+        self.assertContains(signup_page, "Select your store type")
         self.assertNotContains(signup_page, "superuser", status_code=200)
         self.assertNotContains(signup_page, "platform administrator")
         self.assertNotContains(signup_page, "POSitive! provider")
@@ -1344,6 +1359,26 @@ class PublicTrialAndGuideTests(TestCase):
         second_attempt = self.client.get(reverse("start_trial"))
         self.assertRedirects(second_attempt, reverse("dashboard"))
         self.assertEqual(StoreSettings.objects.count(), 1)
+
+    def test_trial_store_type_has_no_default_and_is_required(self):
+        response = self.client.post(reverse("start_trial"), self.trial_data(store_type=""))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Select your store type")
+        self.assertContains(response, "This field is required")
+        self.assertFalse(StoreSettings.objects.exists())
+
+    def test_public_search_files_list_only_public_routes(self):
+        robots = self.client.get(reverse("robots"))
+        self.assertEqual(robots.status_code, 200)
+        self.assertContains(robots, "Disallow: /admin/")
+        self.assertContains(robots, self.client.get(reverse("sitemap")).wsgi_request.build_absolute_uri(reverse("sitemap")))
+
+        sitemap = self.client.get(reverse("sitemap"))
+        self.assertEqual(sitemap.status_code, 200)
+        self.assertEqual(sitemap["Content-Type"], "application/xml; charset=utf-8")
+        self.assertContains(sitemap, reverse("feature_guide"))
+        self.assertContains(sitemap, reverse("public_document", args=["privacy"]))
+        self.assertNotContains(sitemap, reverse("dashboard"))
 
     def test_non_cafe_trial_rejects_a_crafted_dining_service_charge(self):
         response = self.client.post(
@@ -1415,9 +1450,9 @@ class PublicTrialAndGuideTests(TestCase):
         self.assertContains(page, "Multi-store access requires Pro on every store")
         self.assertContains(page, "scheduled summaries")
         self.assertContains(page, "Included with every POSitive plan")
-        self.assertContains(page, "7-days-a-week local support")
+        self.assertContains(page, "Local support daily, 9:00 AM–6:00 PM")
         self.assertContains(page, "Book a demo")
-        self.assertContains(page, "positive-logo-redesigned.png")
+        self.assertContains(page, "positive-logo-v2.png")
         self.assertNotContains(page, "superuser")
         self.assertNotContains(page, "platform administrator")
         self.assertNotContains(page, "POSitive! provider")
@@ -1438,6 +1473,16 @@ class PublicTrialAndGuideTests(TestCase):
         self.assertNotIn(b"positive! provider", normalized_content)
         self.assertNotIn(b"django administration", normalized_content)
         self.assertEqual(content.count(b"/Type /Page\n"), 3)
+
+    def test_database_backup_can_be_verified_in_isolation(self):
+        User.objects.create_user(username="backup-user", password="Back-up-test-9137!")
+        StoreSettings.objects.create(business_name="Backup Store", store_id="BACKUP-01")
+        with tempfile.TemporaryDirectory() as temp_directory:
+            backup_path = Path(temp_directory) / "positive-test.json.gz"
+            call_command("backup_database", output=str(backup_path), verbosity=0)
+            self.assertTrue(backup_path.exists())
+            self.assertTrue(Path(f"{backup_path}.sha256").exists())
+            call_command("verify_database_backup", input=str(backup_path), verbosity=0)
 
     def test_store_workspace_exposes_persistent_theme_toggle(self):
         today = timezone.localdate()

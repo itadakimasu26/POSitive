@@ -17,6 +17,7 @@ from django.db import IntegrityError, transaction
 from django.db.models import Count, DecimalField, ExpressionWrapper, F, Q, Sum
 from django.http import FileResponse, Http404, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.templatetags.static import static
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
@@ -166,6 +167,13 @@ def _csv_safe(value):
     return text
 
 
+def _public_metadata(request, route_name):
+    return {
+        "canonical_url": request.build_absolute_uri(reverse(route_name)),
+        "social_image_url": request.build_absolute_uri(static("pos/images/positive-logo-v2.png")),
+    }
+
+
 @require_http_methods(["GET", "POST"])
 def marketing_home(request):
     form = DemoRequestForm(request.POST or None)
@@ -176,6 +184,25 @@ def marketing_home(request):
             f"Thanks, {demo_request.name}. Your demo request is booked and we will contact you using the details provided.",
         )
         return redirect(f"{reverse('home')}#book-demo")
+    metadata = _public_metadata(request, "home")
+    metadata["structured_data"] = json.dumps(
+        {
+            "@context": "https://schema.org",
+            "@type": "SoftwareApplication",
+            "name": "POSitive!",
+            "applicationCategory": "BusinessApplication",
+            "operatingSystem": "Any modern web browser",
+            "url": metadata["canonical_url"],
+            "image": metadata["social_image_url"],
+            "description": "Browser-based point of sale, inventory, reporting, and staff controls for growing local retailers.",
+            "offers": [
+                {"@type": "Offer", "name": "Starter", "price": "399", "priceCurrency": "PHP"},
+                {"@type": "Offer", "name": "Pro", "price": "799", "priceCurrency": "PHP"},
+            ],
+        },
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
     return render(
         request,
         "pos/marketing_home.html",
@@ -184,6 +211,7 @@ def marketing_home(request):
             "support_contact_email": django_settings.SUPPORT_CONTACT_EMAIL,
             "support_contact_messenger": django_settings.SUPPORT_CONTACT_MESSENGER,
             "support_contact_phone": django_settings.SUPPORT_CONTACT_PHONE,
+            **metadata,
         },
     )
 
@@ -233,7 +261,46 @@ def start_trial(request):
 
 
 def feature_guide(request):
-    return render(request, "pos/feature_guide.html")
+    return render(request, "pos/feature_guide.html", _public_metadata(request, "feature_guide"))
+
+
+@require_http_methods(["GET"])
+def robots_txt(request):
+    sitemap_url = request.build_absolute_uri(reverse("sitemap"))
+    content = "\n".join(
+        [
+            "User-agent: *",
+            "Allow: /",
+            "Disallow: /admin/",
+            "Disallow: /dashboard/",
+            "Disallow: /products/",
+            "Disallow: /pro/",
+            "Disallow: /receipt/",
+            "Disallow: /reports/",
+            "Disallow: /sell/",
+            "Disallow: /settings/",
+            "Disallow: /stores/",
+            f"Sitemap: {sitemap_url}",
+            "",
+        ]
+    )
+    return HttpResponse(content, content_type="text/plain; charset=utf-8")
+
+
+@require_http_methods(["GET"])
+def sitemap(request):
+    public_routes = [
+        reverse("home"),
+        reverse("feature_guide"),
+        reverse("start_trial"),
+        *[reverse("public_document", args=[document]) for document in ("privacy", "terms", "policies", "security")],
+    ]
+    urls = "".join(
+        f"<url><loc>{escape(request.build_absolute_uri(route), quote=True)}</loc></url>"
+        for route in public_routes
+    )
+    content = f'<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{urls}</urlset>'
+    return HttpResponse(content, content_type="application/xml; charset=utf-8")
 
 
 def feature_guide_pdf(request):

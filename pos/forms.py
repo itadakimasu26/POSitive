@@ -47,7 +47,6 @@ class DemoRequestForm(forms.ModelForm):
                 ("Pet supplies", "Pet-supply store"),
                 ("Hardware / general merchandise", "Hardware / general merchandise"),
                 ("Cosmetics / personal care", "Cosmetics / personal care"),
-                ("Food service", "Cafe / food service"),
                 ("Other", "Other"),
             ]),
             "preferred_schedule": forms.DateTimeInput(attrs={"type": "datetime-local"}),
@@ -68,7 +67,7 @@ class TrialSignupForm(forms.Form):
     )
     store_type = forms.ChoiceField(
         label="Type of store",
-        choices=StoreSettings.StoreType.choices,
+        choices=[("", "Select your store type"), *StoreSettings.StoreType.choices],
         help_text="We will prepare the most useful product categories for your business.",
     )
     service_charge_rate = forms.DecimalField(

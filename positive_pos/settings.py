@@ -94,10 +94,11 @@ if DATABASE_URL:
         )
     }
 else:
+    local_database_path = os.getenv("POSITIVE_SQLITE_PATH", "").strip()
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.sqlite3",
-            "NAME": BASE_DIR / "db.sqlite3",
+            "NAME": Path(local_database_path) if local_database_path else BASE_DIR / "db.sqlite3",
         }
     }
 

@@ -13,7 +13,7 @@ from .admin_site import platform_admin_site
 
 
 urlpatterns = [
-    path("favicon.ico", RedirectView.as_view(url=static("pos/images/positive-logo-redesigned.png"), permanent=True)),
+    path("favicon.ico", RedirectView.as_view(url=static("pos/images/positive-mark-v2.png"), permanent=True)),
     path("admin/", platform_admin_site.urls),
     path("login/", auth_views.LoginView.as_view(template_name="registration/login.html"), name="login"),
     path("logout/", PositiveLogoutView.as_view(), name="logout"),
