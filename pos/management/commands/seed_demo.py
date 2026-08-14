@@ -14,7 +14,7 @@ PRODUCTS = [
 
 
 class Command(BaseCommand):
-    help = "Create the POSitive! sample store and product catalog. Safe to run more than once."
+    help = "Create the OXPOS sample store and product catalog. Safe to run more than once."
 
     def add_arguments(self, parser):
         parser.add_argument("--store-id", default="P01", help="Store ID that receives the demo catalog.")
@@ -32,4 +32,4 @@ class Command(BaseCommand):
                 defaults=item,
             )
             created += int(was_created)
-        self.stdout.write(self.style.SUCCESS(f"POSitive! demo ready. {created} new products created."))
+        self.stdout.write(self.style.SUCCESS(f"OXPOS demo ready. {created} new products created."))

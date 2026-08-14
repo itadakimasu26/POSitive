@@ -1,12 +1,12 @@
 {% extends 'pos/base.html' %}
-{% block title %}{{ sale.receipt_number }} — POSitive!{% endblock %}
+{% block title %}{{ sale.receipt_number }} — OXPOS{% endblock %}
 {% block section %}Sales{% endblock %}
 {% block page_title %}Receipt{% endblock %}
 {% block content %}
 <section class="receipt-wrap">
     <div class="receipt-success {% if sale.status != 'Completed' %}reversed{% endif %}"><span>{% if sale.status == 'Completed' %}✓{% else %}!{% endif %}</span><h2>{% if sale.status == 'Completed' %}Payment successful{% else %}Sale {{ sale.status|lower }}{% endif %}</h2><p>{{ sale.receipt_number }}</p></div>
     <article class="receipt-card">
-        <div class="receipt-store">{% include 'includes/brand_logo.html' with logo_class='receipt-logo' %}<div><strong>{{ store.business_name }}</strong><small>{{ store.address|default:'POSitive! point of sale' }}</small></div><span class="status {% if sale.status == 'Completed' %}good{% else %}low{% endif %}">{{ sale.status }}</span></div>
+        <div class="receipt-store">{% include 'includes/brand_logo.html' with logo_class='receipt-logo' %}<div><strong>{{ store.business_name }}</strong><small>{{ store.address|default:'OXPOS point of sale' }}</small></div><span class="status {% if sale.status == 'Completed' %}good{% else %}low{% endif %}">{{ sale.status }}</span></div>
         <div class="receipt-meta"><span>{{ sale.created_at|date:'F j, Y · g:i A' }}</span><span>Cashier: {{ sale.user.get_full_name|default:sale.user.username }}</span>{% if store.supports_dining %}<span>Order type: {{ sale.order_type }}</span>{% endif %}<span>Paid via {{ sale.payment_method }}</span>{% if sale.source == 'Offline CSV' %}<span>Recovered offline order: {{ sale.external_order_id }}</span>{% endif %}{% if sale.customer %}<span>Customer: {{ sale.customer.name }}</span>{% endif %}</div>
         <div class="receipt-lines">{% for item in sale.items.all %}<div><span><strong>{{ item.product_name }}</strong><small>{{ item.quantity }} × ₱{{ item.unit_price|floatformat:2 }}</small></span><b>₱{{ item.line_total|floatformat:2 }}</b></div>{% endfor %}</div>
         <div class="receipt-totals"><p><span>Subtotal</span><strong>₱{{ sale.subtotal|floatformat:2 }}</strong></p>{% if sale.discount %}<p><span>Discount ({{ sale.discount_rate }}%)</span><strong>−₱{{ sale.discount|floatformat:2 }}</strong></p>{% endif %}{% if sale.loyalty_discount %}<p><span>Loyalty redemption</span><strong>−₱{{ sale.loyalty_discount|floatformat:2 }}</strong></p>{% endif %}{% if sale.service_charge %}<p><span>{% if store.supports_dining %}Dine-in {% endif %}service charge ({{ sale.service_charge_rate }}%)</span><strong>₱{{ sale.service_charge|floatformat:2 }}</strong></p>{% endif %}<p><span>VAT</span><strong>₱{{ sale.tax|floatformat:2 }}</strong></p><p><span>Total</span><strong>₱{{ sale.total|floatformat:2 }}</strong></p></div>

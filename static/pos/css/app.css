@@ -1,19 +1,19 @@
 :root {
-  --ink: #17221f;
-  --muted: #6d7874;
-  --line: #e4ebe8;
-  --soft: #f3f7f5;
+  --ink: #10233f;
+  --muted: #68798a;
+  --line: #dfe8ee;
+  --soft: #f2f7fa;
   --panel: #fff;
-  --green: #0c8f69;
-  --green-dark: #087356;
-  --green-soft: #e8f7f1;
-  --shadow: 0 14px 38px rgba(24, 55, 45, .07);
+  --green: #08a8a0;
+  --green-dark: #087f7a;
+  --green-soft: #e5f8f7;
+  --shadow: 0 14px 38px rgba(5, 47, 104, .08);
 }
 
 * { box-sizing: border-box; }
 .sr-only { position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0; }
-html { background: #f4f8f6; }
-body { margin: 0; overflow-x:hidden; background: #f4f8f6; color: var(--ink); font-family: "DM Sans", Arial, sans-serif; }
+html { background: #f4f8fa; }
+body { margin: 0; overflow-x:hidden; background: #f4f8fa; color: var(--ink); font-family: "DM Sans", Arial, sans-serif; }
 body.modal-open,body.menu-open { overflow:hidden; }
 a { color: inherit; text-decoration: none; }
 button, input, select, textarea { font: inherit; }
@@ -21,12 +21,12 @@ button { color: inherit; }
 code { font-size: 10px; }
 
 .app-shell { min-height: 100vh; display: flex; }
-.sidebar { position: fixed; inset: 0 auto 0 0; z-index: 30; width: 248px; display: flex; flex-direction: column; padding: 22px 16px 17px; background: #10251f; color: #fff; }
+.sidebar { position: fixed; inset: 0 auto 0 0; z-index: 30; width: 248px; display: flex; flex-direction: column; padding: 22px 16px 17px; background: #062f68; color: #fff; }
 .brand { display: flex; align-items: center; gap: 11px; padding: 0 8px 22px; color: #fff; }
-.brand-logo { display:block;width:190px;height:58px;object-fit:cover;object-position:center;border-radius:10px;background:#fff; }
+.brand-logo { display:block;width:190px;height:58px;padding:4px;object-fit:contain;object-position:center;border-radius:10px;background:#fff; }
 .sidebar .brand { justify-content:center;padding-left:0;padding-right:0; }
 .sidebar .brand-logo { width:196px;height:59px;box-shadow:0 7px 18px rgba(0,0,0,.12); }
-.brand-mark { display: grid; place-items: center; width: 39px; height: 39px; border-radius: 12px; background: #3bd29c; color: #10251f; font-size: 23px; font-weight: 850; transform: rotate(-3deg); }
+.brand-mark { display: grid; place-items: center; width: 39px; height: 39px; border-radius: 12px; background: #10b8af; color: #062f68; font-size: 23px; font-weight: 850; transform: rotate(-3deg); }
 .brand strong { display: block; font-size: 21px; letter-spacing: -.8px; }
 .brand small { display: block; margin-top: 1px; color: #a3b8b0; font-size: 9px; letter-spacing: 1.7px; text-transform: uppercase; }
 .store-chip { position: relative; display: flex; align-items: center; gap: 10px; margin-bottom: 22px; padding: 12px; border: 1px solid rgba(255,255,255,.1); border-radius: 13px; background: rgba(255,255,255,.055); }
@@ -55,7 +55,7 @@ code { font-size: 10px; }
 .nav-caption { margin: 0 10px 8px; color: #668178; font-size: 8px; font-weight: 750; letter-spacing: 1.5px; text-transform: uppercase; }
 .nav-list a { display: flex; align-items: center; gap: 11px; width: 100%; margin: 3px 0; padding: 10px 12px; border-radius: 10px; color: #afc0bb; font-size: 11px; font-weight: 650; transition: .18s ease; }
 .nav-list a:hover { background: rgba(255,255,255,.06); color: #fff; }
-.nav-list a.active { background: #effbf6; color: #0d5d47; box-shadow: 0 5px 16px rgba(0,0,0,.15); }
+.nav-list a.active { background: #e9f9f8; color: #066f70; box-shadow: 0 5px 16px rgba(0,0,0,.15); }
 .nav-list a span { display: grid; place-items: center; width: 21px; font-size: 16px; }
 .plan-mini { margin: 0 2px 15px; padding: 13px; border: 1px solid rgba(62,210,157,.18); border-radius: 12px; background: rgba(62,210,157,.1); }
 .plan-mini > div:first-child { display: flex; justify-content: space-between; }
@@ -115,7 +115,7 @@ code { font-size: 10px; }
 .chart-total span { padding: 3px 6px; border-radius: 99px; background: var(--green-soft); color: var(--green); font-size: 7px; font-weight: 750; }
 .bar-chart { height: 145px; display: flex; align-items: flex-end; gap: 15px; padding: 14px 8px 0; border-bottom: 1px solid var(--line); background: repeating-linear-gradient(to bottom,transparent 0,transparent 35px,#edf1ef 36px); }
 .bar-column { height: 100%; flex: 1; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 7px; }
-.bar-column div { width: min(24px,70%); min-height: 8px; border-radius: 6px 6px 2px 2px; background: linear-gradient(#31bd8a,#0c8f69); }
+.bar-column div { width: min(24px,70%); min-height: 8px; border-radius: 6px 6px 2px 2px; background: linear-gradient(#18c2ba,#08a8a0); }
 .bar-column small { height: 15px; color: #89918e; font-size: 7px; }
 .quick-card > a { display: flex; align-items: center; gap: 10px; padding: 11px 3px; border-bottom: 1px solid #eef2f0; }
 .quick-card > a:last-child { border: 0; }
@@ -266,6 +266,13 @@ html[data-theme="dark"] .messages .message { background:#0b2018; }html[data-them
 @media (prefers-reduced-motion:reduce) { *,*::before,*::after { transition:none!important;animation:none!important } }
 .login-brand .brand-logo { width:220px;height:67px;box-shadow:0 8px 24px rgba(0,0,0,.12) }
 .public-brand .brand-logo { width:176px;height:53px;border:1px solid #e2ebe7 }
-.receipt-logo { display:block;width:116px;height:36px;object-fit:cover;object-position:center;border-radius:6px;background:#fff }
+.receipt-logo { display:block;width:116px;height:36px;padding:2px;object-fit:contain;object-position:center;border-radius:6px;background:#fff }
+
+/* OXPOS brand palette overrides for legacy component-specific colors. */
+.login-body { background:#eef4f8 }
+.login-story { background:radial-gradient(circle at 80% 15%,rgba(16,184,175,.2),transparent 30%),linear-gradient(145deg,#05264f,#08447e) }
+.plans-section { background:#062f68 }
+.public-preview i { background:linear-gradient(#22c8c0,#08a8a0) }
+.public-plan-grid article.recommended-plan { border-color:#08a8a0;box-shadow:0 15px 35px rgba(8,168,160,.12) }
 @media (max-width:900px) { .offline-recovery-body { grid-template-columns:1fr }.offline-recovery p,.offline-recovery li,.offline-recovery small { font-size:11px }.offline-recovery-actions label,.offline-recovery-actions input { font-size:11px } }
 @media (max-width:520px) { .offline-recovery summary { grid-template-columns:1fr auto }.offline-recovery summary span { grid-column:1/-1;justify-self:start }.offline-recovery summary strong { font-size:12px }.offline-recovery-body { padding:14px }.offline-recovery-actions { padding:11px } }

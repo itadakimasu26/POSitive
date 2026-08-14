@@ -12,7 +12,7 @@ from django.core.management import BaseCommand, CommandError
 
 
 class Command(BaseCommand):
-    help = "Restore a POSitive JSON backup into an isolated temporary database and validate it."
+    help = "Restore an OXPOS JSON backup into an isolated temporary database and validate it."
 
     def add_arguments(self, parser):
         parser.add_argument("--input", required=True, help="Backup ending in .json or .json.gz.")
@@ -38,11 +38,11 @@ class Command(BaseCommand):
         if not isinstance(records, list):
             raise CommandError("The backup must contain a JSON fixture list.")
 
-        with tempfile.TemporaryDirectory(prefix="positive-restore-check-") as temp_directory:
+        with tempfile.TemporaryDirectory(prefix="oxpos-restore-check-") as temp_directory:
             database_path = Path(temp_directory) / "restore-check.sqlite3"
             environment = os.environ.copy()
             environment.pop("DATABASE_URL", None)
-            environment["POSITIVE_SQLITE_PATH"] = str(database_path)
+            environment["OXPOS_SQLITE_PATH"] = str(database_path)
             manage_py = Path(settings.BASE_DIR) / "manage.py"
             commands = [
                 [sys.executable, str(manage_py), "migrate", "--noinput", "--verbosity", "0"],

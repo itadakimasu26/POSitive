@@ -16,7 +16,7 @@
   themeToggle?.addEventListener("click", function () {
     const nextTheme = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
     document.documentElement.dataset.theme = nextTheme;
-    try { window.localStorage.setItem("positive-theme", nextTheme); } catch (error) { /* Storage may be unavailable. */ }
+    try { window.localStorage.setItem("oxpos-theme", nextTheme); } catch (error) { /* Storage may be unavailable. */ }
     updateThemeButton();
   });
   updateThemeButton();
@@ -117,5 +117,5 @@
 
   if (window.location.hash === "#new-product") openModal("productModal");
 
-  window.POSitive = { openModal: openModal };
+  window.OXPOS = { openModal: openModal };
 })();

@@ -1,5 +1,5 @@
 {% extends 'pos/base.html' %}
-{% block title %}Products — POSitive!{% endblock %}
+{% block title %}Products — OXPOS{% endblock %}
 {% block section %}Inventory{% endblock %}
 {% block page_title %}Products &amp; stock{% endblock %}
 {% block content %}
@@ -40,7 +40,7 @@
         <div class="form-row"><label>Category{{ form.category }}{{ form.category.errors }}<small>{{ form.category.help_text }}</small></label><label>Barcode{{ form.barcode }}{{ form.barcode.errors }}</label></div>
         <div class="form-row"><label>Unit cost{{ form.cost }}{{ form.cost.errors }}</label><label>Selling price{{ form.price }}{{ form.price.errors }}</label></div>
         <div class="form-row"><label>Opening stock{{ form.stock }}{{ form.stock.errors }}</label><label>Low-stock level{{ form.low_stock_threshold }}{{ form.low_stock_threshold.errors }}</label></div>
-        <label>Product picture URL (optional){{ form.picture_url }}{{ form.picture_url.errors }}<small>Leave blank and POSitive! will create a temporary picture based on the product name.</small></label>
+        <label>Product picture URL (optional){{ form.picture_url }}{{ form.picture_url.errors }}<small>Leave blank and OXPOS will create a temporary picture based on the product name.</small></label>
         <div class="modal-actions"><button type="button" class="secondary" data-modal-close>Cancel</button><button class="primary">Add product</button></div>
     </form>
 </div>
@@ -53,7 +53,7 @@
         <div class="modal-actions"><button type="button" class="secondary" data-modal-close>Cancel</button><button class="primary">Save picture</button></div>
     </form>
 </div>
-{% if form.errors %}<script>window.addEventListener('DOMContentLoaded',()=>window.POSitive.openModal('productModal'));</script>{% endif %}
+{% if form.errors %}<script>window.addEventListener('DOMContentLoaded',()=>window.OXPOS.openModal('productModal'));</script>{% endif %}
 {% endblock %}
 {% block scripts %}
 <script>

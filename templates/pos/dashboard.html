@@ -1,11 +1,11 @@
 {% extends 'pos/base.html' %}
-{% block title %}Overview — POSitive!{% endblock %}
+{% block title %}Overview — OXPOS{% endblock %}
 {% block section %}Overview{% endblock %}
 {% block page_title %}Good day, {{ request.user.first_name|default:request.user.username }}!{% endblock %}
 {% block content %}
 <div class="stack">
     <section class="welcome-strip"><div><span class="eyebrow">{% now "l, F j" %}</span><h2>Here’s how {{ store.business_name }} is doing.</h2></div>{% if request.store_membership.is_administrator %}<a class="secondary" href="{% url 'reports' %}">View full report →</a>{% endif %}</section>
-    {% if not store.is_subscription_active %}<div class="message-banner warning"><strong>{{ store.subscription_status }} subscription</strong><span>Sales and inventory changes are unavailable. Please contact POSitive! support to restore access.</span></div>{% endif %}
+    {% if not store.is_subscription_active %}<div class="message-banner warning"><strong>{{ store.subscription_status }} subscription</strong><span>Sales and inventory changes are unavailable. Please contact OXPOS support to restore access.</span></div>{% endif %}
     <section class="stat-grid">
         <article class="stat-card"><span class="stat-icon green">↗</span><p>Sales today</p><strong>₱{{ today_total|floatformat:2 }}</strong><small class="positive">Live from your database</small></article>
         <article class="stat-card"><span class="stat-icon blue">▤</span><p>Transactions</p><strong>{{ today_count }}</strong><small>Completed today</small></article>

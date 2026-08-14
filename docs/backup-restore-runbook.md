@@ -19,15 +19,15 @@ Do not publish a retention or recovery promise until those values are confirmed 
 Run this from a trusted operator machine connected to the intended production `DATABASE_URL`. Save the output in encrypted storage outside both Vercel and the primary database provider.
 
 ```powershell
-python manage.py backup_database --output D:\secure-backups\positive-YYYY-MM-DD.json.gz
+python manage.py backup_database --output D:\secure-backups\oxpos-YYYY-MM-DD.json.gz
 ```
 
-The command exports POSitive business records and user accounts, then writes a SHA-256 checksum beside the backup. Treat both files as sensitive because the export contains customer, staff, and sales data plus password hashes.
+The command exports OXPOS business records and user accounts, then writes a SHA-256 checksum beside the backup. Treat both files as sensitive because the export contains customer, staff, and sales data plus password hashes.
 
 ## 3. Verify that the export restores
 
 ```powershell
-python manage.py verify_database_backup --input D:\secure-backups\positive-YYYY-MM-DD.json.gz
+python manage.py verify_database_backup --input D:\secure-backups\oxpos-YYYY-MM-DD.json.gz
 ```
 
 Verification checks the checksum, restores the fixture into a newly migrated temporary SQLite database, runs Django's database checks, and deletes the temporary database. It never writes into the configured production database.

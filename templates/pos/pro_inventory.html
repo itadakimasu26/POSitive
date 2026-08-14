@@ -1,5 +1,5 @@
 {% extends 'pos/base.html' %}
-{% block title %}Stock control — POSitive!{% endblock %}
+{% block title %}Stock control — OXPOS{% endblock %}
 {% block section %}Pro operations{% endblock %}
 {% block page_title %}Advanced stock control{% endblock %}
 {% block content %}
@@ -10,5 +10,5 @@
 </div>
 <div class="modal-backdrop" id="stocktakeModal" aria-hidden="true"><form class="modal" method="post">{% csrf_token %}<input type="hidden" name="action" value="stocktake"><div class="modal-head"><div><span class="eyebrow">Physical count</span><h2>Record stocktake</h2></div><button type="button" data-modal-close>×</button></div>{{ stocktake_form.non_field_errors }}<label>Product{{ stocktake_form.product }}{{ stocktake_form.product.errors }}</label><label>Counted quantity{{ stocktake_form.counted_stock }}{{ stocktake_form.counted_stock.errors }}</label><label>Reason{{ stocktake_form.reason }}{{ stocktake_form.reason.errors }}</label><div class="modal-actions"><button type="button" class="secondary" data-modal-close>Cancel</button><button class="primary">Update stock</button></div></form></div>
 <div class="modal-backdrop" id="transferModal" aria-hidden="true"><form class="modal" method="post">{% csrf_token %}<input type="hidden" name="action" value="transfer"><div class="modal-head"><div><span class="eyebrow">Inter-store transfer</span><h2>Transfer stock</h2></div><button type="button" data-modal-close>×</button></div>{{ transfer_form.non_field_errors }}<label>Destination store{{ transfer_form.destination_store }}{{ transfer_form.destination_store.errors }}</label><label>Product{{ transfer_form.product }}{{ transfer_form.product.errors }}</label><label>Quantity{{ transfer_form.quantity }}{{ transfer_form.quantity.errors }}</label><label>Notes{{ transfer_form.notes }}{{ transfer_form.notes.errors }}</label><div class="modal-actions"><button type="button" class="secondary" data-modal-close>Cancel</button><button class="primary">Complete transfer</button></div></form></div>
-{% if stocktake_form.errors %}<script>window.addEventListener('DOMContentLoaded',()=>window.POSitive.openModal('stocktakeModal'));</script>{% elif transfer_form.errors %}<script>window.addEventListener('DOMContentLoaded',()=>window.POSitive.openModal('transferModal'));</script>{% endif %}
+{% if stocktake_form.errors %}<script>window.addEventListener('DOMContentLoaded',()=>window.OXPOS.openModal('stocktakeModal'));</script>{% elif transfer_form.errors %}<script>window.addEventListener('DOMContentLoaded',()=>window.OXPOS.openModal('transferModal'));</script>{% endif %}
 {% endblock %}

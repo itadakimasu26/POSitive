@@ -532,7 +532,7 @@ class ProductCSVImportForm(forms.Form):
 class OfflineSalesCSVImportForm(forms.Form):
     csv_file = forms.FileField(
         label="Completed offline-sales CSV",
-        help_text="Upload the POSitive! outage-recovery template after service returns.",
+        help_text="Upload the OXPOS outage-recovery template after service returns.",
     )
 
     def clean_csv_file(self):

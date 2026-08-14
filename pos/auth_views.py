@@ -37,14 +37,14 @@ class DeliverablePasswordResetForm(PasswordResetForm):
         email_message.send(fail_silently=False)
 
 
-class PositiveLogoutView(auth_views.LogoutView):
+class OXPOSLogoutView(auth_views.LogoutView):
     def post(self, request, *args, **kwargs):
         if request.user.is_authenticated:
             release_user_registers(request.user)
         return super().post(request, *args, **kwargs)
 
 
-class PositivePasswordResetView(auth_views.PasswordResetView):
+class OXPOSPasswordResetView(auth_views.PasswordResetView):
     form_class = DeliverablePasswordResetForm
     template_name = "registration/password_reset_form.html"
     email_template_name = "registration/password_reset_email.txt"
@@ -58,7 +58,7 @@ class PositivePasswordResetView(auth_views.PasswordResetView):
             logger.exception("Password-reset email delivery failed.")
             form.add_error(
                 None,
-                "We could not send the reset email right now. Please try again or contact POSitive! support.",
+                "We could not send the reset email right now. Please try again or contact OXPOS support.",
             )
             return self.form_invalid(form)
 
@@ -85,7 +85,7 @@ class RequiredPasswordChangeView(LoginRequiredMixin, auth_views.PasswordChangeVi
         return response
 
 
-class PositivePasswordResetConfirmView(auth_views.PasswordResetConfirmView):
+class OXPOSPasswordResetConfirmView(auth_views.PasswordResetConfirmView):
     template_name = "registration/password_reset_confirm.html"
     success_url = reverse_lazy("password_reset_complete")
 

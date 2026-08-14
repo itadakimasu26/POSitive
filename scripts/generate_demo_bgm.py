@@ -1,4 +1,4 @@
-"""Generate the original 60-second score and sound design for the POSitive! story."""
+"""Generate the original 60-second score and sound design for the OXPOS story."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-OUTPUT = ROOT / "static" / "pos" / "media" / "positive-demo-bgm-v2.wav"
+OUTPUT = ROOT / "static" / "pos" / "media" / "oxpos-demo-bgm-v2.wav"
 SAMPLE_RATE = 22_050
 DURATION = 60
 
@@ -54,7 +54,7 @@ def sound_design(time: float, index: int) -> float:
     for start, note in ((9.72, 64), (9.90, 60), (10.08, 57)):
         value += tone_event(time, start, note, 0.52, 0.10)
 
-    # A rising breath pulls the picture into the POSitive! turnaround.
+    # A rising breath pulls the picture into the OXPOS turnaround.
     riser = time - 19.45
     if 0 <= riser < 1.55:
         progress = riser / 1.55

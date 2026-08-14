@@ -47,7 +47,7 @@ class Command(BaseCommand):
                 f"Completed orders: {sales.count()}\n"
                 f"Revenue: PHP {revenue:.2f}\n"
                 f"Low-stock products: {low_stock}\n\n"
-                "Sign in to POSitive! for full reports and operational details."
+                "Sign in to OXPOS for full reports and operational details."
             )
             try:
                 send_mail(

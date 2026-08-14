@@ -1,6 +1,6 @@
 # Dining workflow by business category
 
-POSitive exposes dine-in, take-out, and dine-in service charges only when
+OXPOS exposes dine-in, take-out, and dine-in service charges only when
 `StoreSettings.store_type` is `Cafe`. Grocery, fashion, electronics, pet,
 hardware, beauty, and general-retail stores use a standard `Retail` sale.
 

@@ -1,8 +1,8 @@
 :root,html[data-theme="auto"],html[data-theme="dark"] {
   color-scheme:light;
-  --primary:#147d60;
-  --secondary:#1a916f;
-  --accent:#0f614b;
+  --primary:#08a8a0;
+  --secondary:#10b8af;
+  --accent:#087f7a;
   --primary-fg:#fff;
   --body-fg:#26342f;
   --body-bg:#f6f8f7;
@@ -13,11 +13,11 @@
   --header-bg:#fff;
   --header-link-color:#3b4b45;
   --breadcrumbs-fg:#65746e;
-  --breadcrumbs-link-fg:#147d60;
+  --breadcrumbs-link-fg:#08a8a0;
   --breadcrumbs-bg:#f6f8f7;
-  --link-fg:#147d60;
-  --link-hover-color:#0f624b;
-  --link-selected-fg:#0f624b;
+  --link-fg:#078d89;
+  --link-hover-color:#066f70;
+  --link-selected-fg:#066f70;
   --hairline-color:#e2e8e5;
   --border-color:#dce4e0;
   --error-fg:#b9462d;
@@ -28,16 +28,16 @@
   --selected-bg:#e8f4ef;
   --selected-row:#edf7f3;
   --button-fg:#fff;
-  --button-bg:#147d60;
+  --button-bg:#08a8a0;
   --button-hover-bg:#0f654d;
-  --default-button-bg:#147d60;
+  --default-button-bg:#08a8a0;
   --default-button-hover-bg:#0f654d;
   --close-button-bg:#68756f;
   --close-button-hover-bg:#4f5c57;
   --delete-button-bg:#c25237;
   --delete-button-hover-bg:#a94029;
   --object-tools-fg:#fff;
-  --object-tools-bg:#147d60;
+  --object-tools-bg:#08a8a0;
   --object-tools-hover-bg:#0f654d;
 }
 * { box-sizing:border-box; }
@@ -45,7 +45,7 @@ body { background:#f6f8f7;font-family:"Segoe UI",Inter,Arial,sans-serif; }
 #header { min-height:68px;padding:0 28px;border-bottom:1px solid #e2e8e5;background:#fff;color:#26342f;box-shadow:0 1px 7px rgba(24,55,45,.04); }
 #branding { display:flex;align-items:center; }
 .admin-brand { display:flex;align-items:center;gap:11px;color:#17231f!important;text-decoration:none!important; }
-.admin-logo { display:block;width:164px;height:50px;object-fit:cover;object-position:center;border-radius:8px;border:1px solid #e5ebe8;background:#fff; }
+.admin-logo { display:block;width:164px;height:50px;padding:3px;object-fit:contain;object-position:center;border-radius:8px;border:1px solid #e5ebe8;background:#fff; }
 .admin-brand > span { display:grid;place-items:center;width:36px;height:36px;border-radius:10px;background:#dff4eb;color:#0d7657;font-size:20px;font-weight:900;transform:rotate(-3deg); }
 .admin-brand strong,.admin-brand small { display:block; }.admin-brand strong { font-size:18px;letter-spacing:-.5px; }.admin-brand small { margin-top:1px;color:#7d8b85;font-size:9px;letter-spacing:1.1px;text-transform:uppercase; }
 #user-tools { color:#75827d;font-size:11px; }.platform-only { align-self:center;margin-left:auto;padding:5px 8px;border:1px solid #dce7e2;border-radius:99px;background:#f2f7f5;color:#60706a;font-size:9px;font-weight:800;letter-spacing:.7px; }.theme-toggle { display:none!important; }

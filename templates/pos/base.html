@@ -4,9 +4,9 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="theme-color" content="#10251f">
-    <title>{% block title %}POSitive!{% endblock %}</title>
-    <script>try{document.documentElement.dataset.theme=localStorage.getItem('positive-theme')||'light'}catch(e){document.documentElement.dataset.theme='light'}</script>
+    <meta name="theme-color" content="#062f68">
+    <title>{% block title %}OXPOS{% endblock %}</title>
+    <script>try{document.documentElement.dataset.theme=localStorage.getItem('oxpos-theme')||localStorage.getItem('positive-theme')||'light'}catch(e){document.documentElement.dataset.theme='light'}</script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -67,7 +67,7 @@
         <div class="profile-card">
             <span class="profile-avatar">{{ request.user.username|slice:':2'|upper }}</span>
             <span><strong>{{ request.user.get_full_name|default:request.user.username }}</strong><small>{% if request.user.is_superuser %}Administrator{% elif request.store_membership.is_administrator %}Store administrator{% else %}{{ request.store_membership.get_access_level_display }}{% endif %}</small></span>
-            <form action="{% url 'logout' %}" method="post">{% csrf_token %}<button class="sidebar-logout" title="Log out of POSitive!">Log out</button></form>
+            <form action="{% url 'logout' %}" method="post">{% csrf_token %}<button class="sidebar-logout" title="Log out of OXPOS">Log out</button></form>
         </div>
     </aside>
 
@@ -76,7 +76,7 @@
     <main class="main-content">
         <header class="topbar">
             <button class="menu-button" id="menuButton" type="button" aria-label="Open menu" aria-controls="sidebar" aria-expanded="false">☰</button>
-            <div class="top-title"><p>{% block section %}Workspace{% endblock %} · {{ store.business_name }}</p><h1>{% block page_title %}POSitive!{% endblock %}</h1></div>
+            <div class="top-title"><p>{% block section %}Workspace{% endblock %} · {{ store.business_name }}</p><h1>{% block page_title %}OXPOS{% endblock %}</h1></div>
             <div class="top-actions"><span class="sync-state"><i></i> {{ store.subscription_status }}</span><button class="theme-toggle" id="themeToggle" type="button" aria-label="Switch to dark mode" title="Switch color theme"><span>☾</span></button>{% if store.is_subscription_active %}<a class="primary compact" href="{% url 'sell' %}">＋ New sale</a>{% endif %}</div>
         </header>
 

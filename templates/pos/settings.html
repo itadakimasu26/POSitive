@@ -1,5 +1,5 @@
 {% extends 'pos/base.html' %}
-{% block title %}Settings — POSitive!{% endblock %}
+{% block title %}Settings — OXPOS{% endblock %}
 {% block section %}Workspace{% endblock %}
 {% block page_title %}Store settings & team{% endblock %}
 {% block content %}
@@ -53,5 +53,5 @@
         <div class="modal-actions"><button type="button" class="secondary" data-modal-close>Cancel</button><button class="primary">Add staff</button></div>
     </form>
 </div>
-{% if team_form.errors %}<script>window.addEventListener('DOMContentLoaded',()=>window.POSitive.openModal('teamModal'));</script>{% endif %}
+{% if team_form.errors %}<script>window.addEventListener('DOMContentLoaded',()=>window.OXPOS.openModal('teamModal'));</script>{% endif %}
 {% endblock %}

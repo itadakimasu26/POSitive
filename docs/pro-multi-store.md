@@ -1,6 +1,6 @@
 # Pro multi-store architecture
 
-This document describes the business rules and request flow behind POSitive's
+This document describes the business rules and request flow behind OXPOS's
 Pro multi-store experience. It is intended for maintainers changing stores,
 memberships, subscription plans, or tenant-scoped views.
 
@@ -62,7 +62,7 @@ When Pro capabilities change, keep these sources synchronized:
 - `templates/pos/settings.html` and `templates/pos/pro_required.html` for the
   signed-in product experience;
 - `scripts/feature_guide_source.html` for the printable guide;
-- `static/pos/docs/positive-feature-guide.pdf`, regenerated with
+- `static/pos/docs/oxpos-feature-guide.pdf`, regenerated with
   `python scripts/generate_feature_guide.py`;
 - `README.md` and this document for maintainers.
 

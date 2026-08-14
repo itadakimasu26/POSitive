@@ -24,7 +24,7 @@ CSRF_TRUSTED_ORIGINS = [
     for origin in os.getenv("DJANGO_CSRF_TRUSTED_ORIGINS", "").split(",")
     if origin.strip()
 ]
-for public_host in {"positive-pos-x.vercel.app"}:
+for public_host in {"oxpos-official.vercel.app"}:
     if public_host not in ALLOWED_HOSTS:
         ALLOWED_HOSTS.append(public_host)
     public_origin = f"https://{public_host}"
@@ -94,7 +94,10 @@ if DATABASE_URL:
         )
     }
 else:
-    local_database_path = os.getenv("POSITIVE_SQLITE_PATH", "").strip()
+    local_database_path = os.getenv(
+        "OXPOS_SQLITE_PATH",
+        os.getenv("POSITIVE_SQLITE_PATH", ""),
+    ).strip()
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.sqlite3",
@@ -136,7 +139,7 @@ EMAIL_USE_TLS = env_bool("DJANGO_EMAIL_USE_TLS", True)
 EMAIL_USE_SSL = env_bool("DJANGO_EMAIL_USE_SSL", False)
 if EMAIL_USE_TLS and EMAIL_USE_SSL:
     raise ImproperlyConfigured("DJANGO_EMAIL_USE_TLS and DJANGO_EMAIL_USE_SSL cannot both be true.")
-DEFAULT_FROM_EMAIL = os.getenv("DJANGO_DEFAULT_FROM_EMAIL", "POSitive! <noreply@positive.local>")
+DEFAULT_FROM_EMAIL = os.getenv("DJANGO_DEFAULT_FROM_EMAIL", "OXPOS <oxpos2026@gmail.com>")
 EMAIL_TIMEOUT = int(os.getenv("DJANGO_EMAIL_TIMEOUT", "15"))
 if EMAIL_BACKEND == "django.core.mail.backends.smtp.EmailBackend" and not all(
     [EMAIL_HOST, EMAIL_HOST_USER, EMAIL_HOST_PASSWORD]
@@ -144,8 +147,11 @@ if EMAIL_BACKEND == "django.core.mail.backends.smtp.EmailBackend" and not all(
     raise ImproperlyConfigured("SMTP email requires DJANGO_EMAIL_HOST, DJANGO_EMAIL_HOST_USER, and DJANGO_EMAIL_HOST_PASSWORD.")
 PASSWORD_RESET_TIMEOUT = int(os.getenv("DJANGO_PASSWORD_RESET_TIMEOUT", "3600"))
 
-SUPPORT_CONTACT_EMAIL = os.getenv("SUPPORT_CONTACT_EMAIL", "michaeljohnojoy26@gmail.com")
-SUPPORT_CONTACT_MESSENGER = os.getenv("SUPPORT_CONTACT_MESSENGER", "Michael John Ojoy")
+SUPPORT_CONTACT_EMAIL = os.getenv("SUPPORT_CONTACT_EMAIL", "oxpos2026@gmail.com")
+SUPPORT_CONTACT_FACEBOOK_URL = os.getenv(
+    "SUPPORT_CONTACT_FACEBOOK_URL",
+    "https://www.facebook.com/people/OXPOS/61592625674571/",
+)
 SUPPORT_CONTACT_PHONE = os.getenv("SUPPORT_CONTACT_PHONE", "09640832257")
 
 SECURE_SSL_REDIRECT = env_bool("DJANGO_SECURE_SSL_REDIRECT", not DEBUG)

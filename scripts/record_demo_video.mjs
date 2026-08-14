@@ -7,8 +7,8 @@ import { fileURLToPath } from 'node:url';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(scriptDirectory, '..');
-const videoPath = join(projectRoot, 'static', 'pos', 'media', 'positive-60-second-story-v3.webm');
-const posterPath = join(projectRoot, 'static', 'pos', 'images', 'product', 'positive-demo-story-poster-v3.png');
+const videoPath = join(projectRoot, 'static', 'pos', 'media', 'oxpos-60-second-story-v3.webm');
+const posterPath = join(projectRoot, 'static', 'pos', 'images', 'product', 'oxpos-demo-story-poster-v3.png');
 const chromePath = process.env.CHROME_PATH || 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
 const duration = 60_000;
 
@@ -134,7 +134,7 @@ function connectDebugger(webSocketUrl) {
 
 const serverPort = await listen(server);
 const debuggerPort = await freePort();
-const chromeProfile = join(tmpdir(), `positive-video-${process.pid}`);
+const chromeProfile = join(tmpdir(), `oxpos-video-${process.pid}`);
 const pageUrl = `http://127.0.0.1:${serverPort}/scripts/demo_recorder.html?record=1&duration=${duration}`;
 const chrome = spawn(
   chromePath,

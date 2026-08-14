@@ -170,7 +170,7 @@ def _csv_safe(value):
 def _public_metadata(request, route_name):
     return {
         "canonical_url": request.build_absolute_uri(reverse(route_name)),
-        "social_image_url": request.build_absolute_uri(static("pos/images/positive-logo-v2.png")),
+        "social_image_url": request.build_absolute_uri(static("pos/images/oxpos-logo-tagline-source.png")),
     }
 
 
@@ -189,7 +189,7 @@ def marketing_home(request):
         {
             "@context": "https://schema.org",
             "@type": "SoftwareApplication",
-            "name": "POSitive!",
+            "name": "OXPOS",
             "applicationCategory": "BusinessApplication",
             "operatingSystem": "Any modern web browser",
             "url": metadata["canonical_url"],
@@ -209,7 +209,7 @@ def marketing_home(request):
         {
             "demo_form": form,
             "support_contact_email": django_settings.SUPPORT_CONTACT_EMAIL,
-            "support_contact_messenger": django_settings.SUPPORT_CONTACT_MESSENGER,
+            "support_contact_facebook_url": django_settings.SUPPORT_CONTACT_FACEBOOK_URL,
             "support_contact_phone": django_settings.SUPPORT_CONTACT_PHONE,
             **metadata,
         },
@@ -233,7 +233,7 @@ def public_document(request, document):
             "document_title": title,
             "document": template_key,
             "support_contact_email": django_settings.SUPPORT_CONTACT_EMAIL,
-            "support_contact_messenger": django_settings.SUPPORT_CONTACT_MESSENGER,
+            "support_contact_facebook_url": django_settings.SUPPORT_CONTACT_FACEBOOK_URL,
             "support_contact_phone": django_settings.SUPPORT_CONTACT_PHONE,
         },
     )
@@ -304,13 +304,13 @@ def sitemap(request):
 
 
 def feature_guide_pdf(request):
-    path = django_settings.BASE_DIR / "static" / "pos" / "docs" / "positive-feature-guide.pdf"
+    path = django_settings.BASE_DIR / "static" / "pos" / "docs" / "oxpos-feature-guide.pdf"
     if not path.exists():
         raise Http404("The feature guide is unavailable.")
     return FileResponse(
         path.open("rb"),
         as_attachment=True,
-        filename="POSitive-feature-and-plan-guide.pdf",
+        filename="OXPOS-feature-and-plan-guide.pdf",
         content_type="application/pdf",
     )
 
@@ -393,7 +393,7 @@ def sell(request):
 def download_offline_sales_template(request):
     response = HttpResponse(content_type="text/csv; charset=utf-8")
     response["Content-Disposition"] = (
-        f'attachment; filename="POSitive-{request.store.store_id}-offline-sales.csv"'
+        f'attachment; filename="OXPOS-{request.store.store_id}-offline-sales.csv"'
     )
     response["Cache-Control"] = "no-store"
     writer = csv.DictWriter(response, fieldnames=OFFLINE_SALES_FIELDS)
@@ -573,7 +573,7 @@ def import_offline_sales(request):
                 total = subtotal + tax
                 if group["collected_total"] != total:
                     raise SaleInputError(
-                        f"Order {external_id}: collected total is ₱{group['collected_total']:.2f}, but POSitive! calculates ₱{total:.2f}."
+                        f"Order {external_id}: collected total is ₱{group['collected_total']:.2f}, but OXPOS calculates ₱{total:.2f}."
                     )
                 group["subtotal"] = subtotal
                 group["tax"] = tax
@@ -1849,7 +1849,7 @@ def switch_store(request):
 @store_required(permission="can_manage_inventory")
 def export_products(request):
     response = HttpResponse(content_type="text/csv; charset=utf-8")
-    response["Content-Disposition"] = 'attachment; filename="positive-products.csv"'
+    response["Content-Disposition"] = 'attachment; filename="oxpos-products.csv"'
     response.write("\ufeff")
     writer = csv.writer(response)
     writer.writerow(["Name", "Category", "Barcode", "Cost", "Price", "Stock", "Low stock threshold", "Picture URL"])
@@ -1862,11 +1862,11 @@ def export_products(request):
 def export_sales(request):
     requested_range = request.GET.get("range")
     sales = Sale.objects.filter(store=request.store, status="Completed").select_related("user", "customer")
-    filename = "positive-sales.csv"
+    filename = "oxpos-sales.csv"
     if requested_range in REPORT_RANGES:
         range_key, start, _ = _report_period(requested_range)
         sales = sales.filter(created_at__date__gte=start)
-        filename = f"positive-sales-{range_key}.csv"
+        filename = f"oxpos-sales-{range_key}.csv"
     elif request.store.is_pro and request.GET.get("start") and request.GET.get("end"):
         try:
             start = date.fromisoformat(request.GET["start"])
@@ -1876,7 +1876,7 @@ def export_sales(request):
         if end < start or (end - start).days > 731:
             raise PermissionDenied("The report range must be valid and no longer than two years.")
         sales = sales.filter(created_at__date__range=(start, end))
-        filename = f"positive-sales-{start.isoformat()}-{end.isoformat()}.csv"
+        filename = f"oxpos-sales-{start.isoformat()}-{end.isoformat()}.csv"
     response = HttpResponse(content_type="text/csv; charset=utf-8")
     response["Content-Disposition"] = f'attachment; filename="{filename}"'
     response.write("\ufeff")

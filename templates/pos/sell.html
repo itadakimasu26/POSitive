@@ -1,6 +1,6 @@
 {% extends 'pos/base.html' %}
 {% load static %}
-{% block title %}Checkout — POSitive!{% endblock %}
+{% block title %}Checkout — OXPOS{% endblock %}
 {% block section %}Sales{% endblock %}
 {% block page_title %}New sale{% endblock %}
 {% block content %}
@@ -13,7 +13,7 @@
 <details class="offline-recovery">
     <summary><span>Outage recovery</span><strong>Keep selling if the web app is unavailable</strong><b>Open guide</b></summary>
     <div class="offline-recovery-body">
-        <div><h3>Prepare the offline-sales CSV before an outage</h3><p>Download a fresh store template at the start of a shift and after prices change. During downtime, copy one catalog row per item sold. Give every order a unique ID such as <code>OFF-20260808-001</code>, use <code>YYYY-MM-DD HH:MM</code> for the time, and repeat its payment method, notes, and tax-inclusive collected total on every line.</p><ol><li>Download and keep the template on the checkout device.</li><li>Record completed orders while POSitive! is unavailable.</li><li>Upload the file after service returns. Validation is all-or-nothing and duplicate order IDs are safely skipped.</li></ol></div>
+        <div><h3>Prepare the offline-sales CSV before an outage</h3><p>Download a fresh store template at the start of a shift and after prices change. During downtime, copy one catalog row per item sold. Give every order a unique ID such as <code>OFF-20260808-001</code>, use <code>YYYY-MM-DD HH:MM</code> for the time, and repeat its payment method, notes, and tax-inclusive collected total on every line.</p><ol><li>Download and keep the template on the checkout device.</li><li>Record completed orders while OXPOS is unavailable.</li><li>Upload the file after service returns. Validation is all-or-nothing and duplicate order IDs are safely skipped.</li></ol></div>
         <div class="offline-recovery-actions"><a class="secondary" href="{% url 'offline_sales_template' %}">Download offline-sales CSV</a><form method="post" action="{% url 'import_offline_sales' %}" enctype="multipart/form-data">{% csrf_token %}<label>{{ offline_import_form.csv_file.label }}{{ offline_import_form.csv_file }}</label><button class="primary">Validate &amp; import orders</button></form><small>Maximum 1,000 rows / 250 orders / 2 MB. Imports must be submitted within 90 days.</small></div>
     </div>
 </details>

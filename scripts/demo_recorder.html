@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><title>POSitive 60-second story recorder</title><style>html,body{margin:0;background:#071711;color:#fff;font-family:"Segoe UI",Arial,sans-serif}canvas{display:block;width:100vw;height:auto}</style></head>
+<head><meta charset="utf-8"><title>OXPOS 60-second story recorder</title><style>html,body{margin:0;background:#06264f;color:#fff;font-family:"Segoe UI",Arial,sans-serif}canvas{display:block;width:100vw;height:auto}</style></head>
 <body><canvas id="tour" width="1280" height="720"></canvas>
 <script>
 const canvas = document.getElementById('tour');
@@ -129,9 +129,11 @@ function drawConfetti(local) {
 function drawBrandHeader(sceneIndex, label, dark = true) {
   context.fillStyle = dark ? '#ffffff' : '#0b285f';
   context.font = '800 25px "Segoe UI",Arial';
-  context.fillText('POS', 48, 62);
-  context.fillStyle = '#2fcf9c';
-  context.fillText('itive!', 95, 62);
+  context.fillText('O', 48, 62);
+  context.fillStyle = '#10b8af';
+  context.fillText('X', 66, 62);
+  context.fillStyle = dark ? '#ffffff' : '#0b285f';
+  context.fillText('POS', 84, 62);
   context.fillStyle = dark ? 'rgba(226,244,237,.72)' : '#65746e';
   context.font = '700 12px "Segoe UI",Arial';
   context.fillText('POINT OF SALE', 49, 83);
@@ -289,7 +291,7 @@ function drawRescueScene(local) {
   drawBrandHeader(2, 'THE TURNAROUND');
   const reveal = easeOut(revealLocal / .34);
   context.save(); context.globalAlpha = reveal; context.translate(80 * (1 - reveal), 0);
-  drawStoryCopy('THEN MIKA FINDS POSITIVE!', 'Suddenly, everything clicks.', 'Checkout, stock, and reports finally work together in one clear workspace.', 68, 155, 490);
+  drawStoryCopy('THEN MIKA FINDS OXPOS!', 'Suddenly, everything clicks.', 'Checkout, stock, and reports finally work together in one clear workspace.', 68, 155, 490);
   context.restore();
   const panelX = 610 + 90 * (1 - reveal);
   fillRounded(panelX, 125, 600, 475, 22, '#ffffff', '#79d3b1', 3);
@@ -320,7 +322,7 @@ function drawCheckoutScene(local) {
   drawBackdrop('#03291d', '#28d99d');
   drawSparkles(local, 18);
   drawBrandHeader(3, 'PROOF 1 · AUTOMATIC STOCK');
-  drawStoryCopy('SELL IT ONCE. UPDATE IT EVERYWHERE.', 'Checkout does the counting.', 'Mika completes the sale. POSitive! validates the quantity and updates inventory instantly.', 68, 140, 480);
+  drawStoryCopy('SELL IT ONCE. UPDATE IT EVERYWHERE.', 'Checkout does the counting.', 'Mika completes the sale. OXPOS validates the quantity and updates inventory instantly.', 68, 140, 480);
   drawProductFlow(local);
   fillRounded(570, 125, 640, 488, 22, '#ffffff', '#5ec49f', 3);
   context.save(); roundedRect(584, 139, 612, 460, 15); context.clip(); drawImageCover(assets.checkout, 584, 139, 612, 460, 10, -10); context.restore();
@@ -407,18 +409,18 @@ async function startRecording() {
     loadImage('../static/pos/images/product/dashboard.webp'),
     loadImage('../static/pos/images/product/checkout.webp'),
     loadImage('../static/pos/images/product/inventory.webp'),
-    loadImage('../static/pos/images/positive-logo-v2.png'),
+    loadImage('../static/pos/images/oxpos-logo.png'),
   ]);
   render(0);
   if (!query.has('record')) { window.recordingState = 'preview'; return; }
 
   const audioContext = new AudioContext();
   const [narrationData, musicData] = await Promise.all([
-    fetch('../static/pos/media/positive-demo-narration-v3.wav').then(response => {
+    fetch('../static/pos/media/oxpos-demo-narration-v3.wav').then(response => {
       if (!response.ok) throw new Error(`narration returned ${response.status}`);
       return response.arrayBuffer();
     }),
-    fetch('../static/pos/media/positive-demo-bgm-v2.wav').then(response => {
+    fetch('../static/pos/media/oxpos-demo-bgm-v2.wav').then(response => {
       if (!response.ok) throw new Error(`music returned ${response.status}`);
       return response.arrayBuffer();
     }),

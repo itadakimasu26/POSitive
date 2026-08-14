@@ -5,7 +5,7 @@ from django.core.management import BaseCommand, CommandError, call_command
 
 
 class Command(BaseCommand):
-    help = "Export POSitive business data and users to a verifiable JSON backup."
+    help = "Export OXPOS business data and users to a verifiable JSON backup."
 
     def add_arguments(self, parser):
         parser.add_argument("--output", required=True, help="Destination ending in .json or .json.gz.")

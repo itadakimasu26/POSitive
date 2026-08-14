@@ -1,4 +1,4 @@
-"""Render the POSitive! plan guide with Chromium's production PDF engine."""
+"""Render the OXPOS plan guide with Chromium's production PDF engine."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "scripts" / "feature_guide_source.html"
-DESTINATION = ROOT / "static" / "pos" / "docs" / "positive-feature-guide.pdf"
+DESTINATION = ROOT / "static" / "pos" / "docs" / "oxpos-feature-guide.pdf"
 
 
 def find_chrome() -> Path:

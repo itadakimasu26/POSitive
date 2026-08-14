@@ -417,7 +417,7 @@ class OfflineSalesRecoveryTests(StoreTestCase):
             {"csv_file": self.upload(self.order_rows(total="300.00"))},
             follow=True,
         )
-        self.assertContains(response, "POSitive! calculates ₱336.00")
+        self.assertContains(response, "OXPOS calculates ₱336.00")
         self.assertFalse(Sale.objects.filter(source=Sale.Source.OFFLINE_CSV).exists())
         self.product.refresh_from_db()
         self.assertEqual(self.product.stock, 10)
@@ -1255,9 +1255,9 @@ class PublicTrialAndGuideTests(TestCase):
         self.assertContains(response, "Multi-store command center")
         self.assertContains(response, "Owner super dashboard")
         self.assertContains(response, "every store sharing an administrator login must remain on Pro")
-        self.assertContains(response, "positive-60-second-story-v3.webm")
-        self.assertContains(response, "positive-demo-story-poster-v3.png")
-        self.assertContains(response, "positive-demo-captions-v3.vtt")
+        self.assertContains(response, "oxpos-60-second-story-v3.webm")
+        self.assertContains(response, "oxpos-demo-story-poster-v3.png")
+        self.assertContains(response, "oxpos-demo-captions-v3.vtt")
         self.assertContains(response, "Sell it once. Stock updates instantly.")
         self.assertContains(response, "60 seconds to a better close")
         self.assertContains(response, reverse("public_document", args=["privacy"]))
@@ -1315,7 +1315,7 @@ class PublicTrialAndGuideTests(TestCase):
                 response = self.client.get(reverse("public_document", args=[document]))
                 self.assertEqual(response.status_code, 200)
                 self.assertContains(response, copy)
-                self.assertContains(response, "michaeljohnojoy26@gmail.com")
+                self.assertContains(response, "oxpos2026@gmail.com")
         self.assertEqual(self.client.get(reverse("public_document", args=["missing"])).status_code, 404)
 
     def test_each_supported_store_type_has_its_own_category_preset(self):
@@ -1338,7 +1338,7 @@ class PublicTrialAndGuideTests(TestCase):
         self.assertContains(signup_page, "Select your store type")
         self.assertNotContains(signup_page, "superuser", status_code=200)
         self.assertNotContains(signup_page, "platform administrator")
-        self.assertNotContains(signup_page, "POSitive! provider")
+        self.assertNotContains(signup_page, "OXPOS provider")
         response = self.client.post(reverse("start_trial"), self.trial_data())
         self.assertRedirects(response, reverse("dashboard"))
         store = StoreSettings.objects.get(business_name="Walk-in Trial Business")
@@ -1449,19 +1449,19 @@ class PublicTrialAndGuideTests(TestCase):
         self.assertContains(page, "Up to 3 administrators and 10 staff per store")
         self.assertContains(page, "Multi-store access requires Pro on every store")
         self.assertContains(page, "scheduled summaries")
-        self.assertContains(page, "Included with every POSitive plan")
+        self.assertContains(page, "Included with every OXPOS plan")
         self.assertContains(page, "Local support daily, 9:00 AM–6:00 PM")
         self.assertContains(page, "Book a demo")
-        self.assertContains(page, "positive-logo-v2.png")
+        self.assertContains(page, "oxpos-logo.png")
         self.assertNotContains(page, "superuser")
         self.assertNotContains(page, "platform administrator")
-        self.assertNotContains(page, "POSitive! provider")
+        self.assertNotContains(page, "OXPOS provider")
         self.assertNotContains(page, "Django Administration")
 
         response = self.client.get(reverse("feature_guide_pdf"))
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response["Content-Type"], "application/pdf")
-        self.assertIn("POSitive-feature-and-plan-guide.pdf", response["Content-Disposition"])
+        self.assertIn("OXPOS-feature-and-plan-guide.pdf", response["Content-Disposition"])
         content = b"".join(response.streaming_content)
         self.assertTrue(content.startswith(b"%PDF-1.4"))
         self.assertTrue(content.rstrip().endswith(b"%%EOF"))
@@ -1470,7 +1470,7 @@ class PublicTrialAndGuideTests(TestCase):
         normalized_content = content.lower()
         self.assertNotIn(b"superuser", normalized_content)
         self.assertNotIn(b"platform administrator", normalized_content)
-        self.assertNotIn(b"positive! provider", normalized_content)
+        self.assertNotIn(b"oxpos provider", normalized_content)
         self.assertNotIn(b"django administration", normalized_content)
         self.assertEqual(content.count(b"/Type /Page\n"), 3)
 
@@ -1478,7 +1478,7 @@ class PublicTrialAndGuideTests(TestCase):
         User.objects.create_user(username="backup-user", password="Back-up-test-9137!")
         StoreSettings.objects.create(business_name="Backup Store", store_id="BACKUP-01")
         with tempfile.TemporaryDirectory() as temp_directory:
-            backup_path = Path(temp_directory) / "positive-test.json.gz"
+            backup_path = Path(temp_directory) / "oxpos-test.json.gz"
             call_command("backup_database", output=str(backup_path), verbosity=0)
             self.assertTrue(backup_path.exists())
             self.assertTrue(Path(f"{backup_path}.sha256").exists())
@@ -1501,7 +1501,7 @@ class PublicTrialAndGuideTests(TestCase):
         self.client.force_login(user)
         response = self.client.get(reverse("dashboard"))
         self.assertContains(response, 'id="themeToggle"')
-        self.assertContains(response, "positive-theme")
+        self.assertContains(response, "oxpos-theme")
         self.assertContains(response, "sidebar-logout")
         self.assertContains(response, "Log out")
 

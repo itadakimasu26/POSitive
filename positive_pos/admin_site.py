@@ -5,8 +5,8 @@ from django.utils import timezone
 
 
 class PlatformAdminSite(AdminSite):
-    site_header = "POSitive! Platform Administration"
-    site_title = "POSitive! Platform Admin"
+    site_header = "OXPOS Platform Administration"
+    site_title = "OXPOS Platform Admin"
     index_title = "Business overview"
     index_template = "admin/platform_index.html"
 

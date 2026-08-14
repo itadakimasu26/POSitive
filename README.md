@@ -1,6 +1,6 @@
-# POSitive! — Django Edition
+# OXPOS — Django Edition
 
-POSitive! is a responsive point-of-sale web application built with Python and Django. This edition replaces the original front-end demo state with Django authentication and SQLite database storage.
+OXPOS is a responsive point-of-sale web application built with Python and Django. It combines checkout, inventory, reporting, staff controls, and multi-store operations in one cloud-based workspace.
 
 ## Included features
 
@@ -39,7 +39,7 @@ Install Python 3.11 or newer and enable **Add Python to PATH** during installati
 
 ### 2. Open the project
 
-Extract the ZIP, open the `POSitive-Django` folder in VS Code, then open **Terminal → New Terminal**.
+Extract the ZIP, open the `OXPOS-Django` folder in VS Code, then open **Terminal → New Terminal**.
 
 ### 3. Create and activate a virtual environment
 
@@ -109,8 +109,8 @@ Run it daily with Windows Task Scheduler, cron, or the scheduler provided by you
 Create an encrypted off-provider logical export from a trusted operator machine, then prove that it restores into an isolated temporary database:
 
 ```powershell
-python manage.py backup_database --output D:\secure-backups\positive-YYYY-MM-DD.json.gz
-python manage.py verify_database_backup --input D:\secure-backups\positive-YYYY-MM-DD.json.gz
+python manage.py backup_database --output D:\secure-backups\oxpos-YYYY-MM-DD.json.gz
+python manage.py verify_database_backup --input D:\secure-backups\oxpos-YYYY-MM-DD.json.gz
 ```
 
 See `docs/backup-restore-runbook.md` for the production-provider checklist, storage requirements, and restore-test recordkeeping. Do not use Vercel's temporary function filesystem as a backup destination.
@@ -128,7 +128,7 @@ The local default prints mail to the console. Production must use a real email p
 - `static/pos/css/app.css` — complete responsive design
 - `static/pos/css/admin.css` — minimalist light platform-administration design
 - `static/pos/js/sell.js` — interactive checkout cart
-- `static/pos/docs/positive-feature-guide.pdf` — generated feature and plan guide
+- `static/pos/docs/oxpos-feature-guide.pdf` — generated feature and plan guide
 - `scripts/generate_feature_guide.py` — reproducible PDF generator
 - `docs/pro-multi-store.md` — Pro business rules, tenant flow, owner-dashboard metrics, and maintenance checklist
 - `docs/dining-workflow.md` — business-category eligibility and enforcement for dine-in, take-out, and service charges

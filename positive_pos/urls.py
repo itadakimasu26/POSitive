@@ -4,19 +4,19 @@ from django.urls import include, path
 from django.views.generic import RedirectView
 
 from pos.auth_views import (
-    PositiveLogoutView,
-    PositivePasswordResetConfirmView,
-    PositivePasswordResetView,
+    OXPOSLogoutView,
+    OXPOSPasswordResetConfirmView,
+    OXPOSPasswordResetView,
     RequiredPasswordChangeView,
 )
 from .admin_site import platform_admin_site
 
 
 urlpatterns = [
-    path("favicon.ico", RedirectView.as_view(url=static("pos/images/positive-mark-v2.png"), permanent=True)),
+    path("favicon.ico", RedirectView.as_view(url=static("pos/images/oxpos-mark.png"), permanent=True)),
     path("admin/", platform_admin_site.urls),
     path("login/", auth_views.LoginView.as_view(template_name="registration/login.html"), name="login"),
-    path("logout/", PositiveLogoutView.as_view(), name="logout"),
+    path("logout/", OXPOSLogoutView.as_view(), name="logout"),
     path(
         "account/password/change-required/",
         RequiredPasswordChangeView.as_view(),
@@ -24,7 +24,7 @@ urlpatterns = [
     ),
     path(
         "password-reset/",
-        PositivePasswordResetView.as_view(),
+        OXPOSPasswordResetView.as_view(),
         name="password_reset",
     ),
     path(
@@ -36,7 +36,7 @@ urlpatterns = [
     ),
     path(
         "password-reset/confirm/<uidb64>/<token>/",
-        PositivePasswordResetConfirmView.as_view(),
+        OXPOSPasswordResetConfirmView.as_view(),
         name="password_reset_confirm",
     ),
     path(
