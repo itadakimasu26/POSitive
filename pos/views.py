@@ -1,6 +1,7 @@
 import csv
 import hashlib
 import json
+import logging
 import re
 import uuid
 from datetime import date, datetime, timedelta
@@ -13,6 +14,7 @@ from django.contrib import messages
 from django.contrib.auth import authenticate, login
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied, ValidationError
+from django.core.mail import EmailMessage
 from django.db import IntegrityError, transaction
 from django.db.models import Count, DecimalField, ExpressionWrapper, F, Q, Sum
 from django.http import FileResponse, Http404, HttpResponse
@@ -40,6 +42,7 @@ from .forms import (
     StocktakeForm,
     StockTransferForm,
     StoreTeamMemberForm,
+    SubscriptionExtensionRequestForm,
     SupplierForm,
     TrialSignupForm,
 )
@@ -79,6 +82,7 @@ OFFLINE_SALES_FIELDS = (
     "notes",
 )
 OFFLINE_ORDER_ID_PATTERN = re.compile(r"^[A-Z0-9][A-Z0-9_-]{2,39}$")
+logger = logging.getLogger(__name__)
 
 
 class SaleInputError(Exception):
@@ -172,6 +176,57 @@ def _public_metadata(request, route_name):
         "canonical_url": request.build_absolute_uri(reverse(route_name)),
         "social_image_url": request.build_absolute_uri(static("pos/images/oxpos-logo-tagline-source.png")),
     }
+
+
+def _deliver_subscription_extension_email(request, extension_request):
+    requester = extension_request.requested_by
+    requester_name = requester.get_full_name() or requester.username
+    admin_url = request.build_absolute_uri(
+        reverse(
+            "admin:pos_subscriptionextensionrequest_change",
+            args=[extension_request.pk],
+        )
+    )
+    body = "\n".join(
+        [
+            "A store administrator submitted a subscription extension request.",
+            "",
+            f"Request ID: {extension_request.pk}",
+            f"Store: {extension_request.store.business_name} ({extension_request.store.store_id})",
+            f"Current plan: {extension_request.store.active_plan}",
+            f"Subscription ended: {extension_request.store.subscription_end or 'Not set'}",
+            f"Requested plan: {extension_request.requested_plan}",
+            f"Preferred payment type: {extension_request.payment_type}",
+            f"Requested by: {requester_name} (@{requester.username})",
+            f"Requester email: {requester.email or 'Not provided'}",
+            "",
+            "Comments:",
+            extension_request.comments or "No comments provided.",
+            "",
+            f"Review in OXPOS Administration: {admin_url}",
+        ]
+    )
+    try:
+        delivered = EmailMessage(
+            subject=f"OXPOS subscription extension request — {extension_request.store.store_id}",
+            body=body,
+            to=[django_settings.SUPPORT_CONTACT_EMAIL],
+            reply_to=[requester.email] if requester.email else None,
+        ).send(fail_silently=False)
+        if delivered != 1:
+            raise RuntimeError("The configured email backend did not accept the message.")
+    except Exception as exc:  # The database request must survive an email-provider outage.
+        logger.exception(
+            "Subscription extension email delivery failed for request %s.",
+            extension_request.pk,
+        )
+        extension_request.email_error = f"{type(exc).__name__}: {exc}"[:500]
+        extension_request.save(update_fields=["email_error", "updated_at"])
+        return False
+    extension_request.email_sent_at = timezone.now()
+    extension_request.email_error = ""
+    extension_request.save(update_fields=["email_sent_at", "email_error", "updated_at"])
+    return True
 
 
 @require_http_methods(["GET", "POST"])
@@ -1164,6 +1219,7 @@ def settings_page(request):
     store = request.store
     team_form = StoreTeamMemberForm(store=store)
     schedule_form = ReportScheduleForm(store=store)
+    extension_request_form = SubscriptionExtensionRequestForm(store=store)
     if request.method == "POST":
         action = request.POST.get("action")
         if action == "team":
@@ -1196,6 +1252,35 @@ def settings_page(request):
                 messages.success(request, "The scheduled report recipient was added.")
                 return redirect("settings")
             messages.error(request, "Please correct the scheduled report details below.")
+        elif action == "extension":
+            if store.subscription_status != "Expired":
+                raise PermissionDenied("Extension requests are available only after a subscription expires.")
+            extension_request_form = SubscriptionExtensionRequestForm(request.POST, store=store)
+            if extension_request_form.is_valid():
+                extension_request = extension_request_form.save(commit=False)
+                extension_request.requested_by = request.user
+                extension_request.save()
+                _audit(
+                    store,
+                    request.user,
+                    "subscription.extension_requested",
+                    (
+                        f"Requested the {extension_request.requested_plan} plan with "
+                        f"{extension_request.payment_type} as the preferred payment type."
+                    ),
+                )
+                if _deliver_subscription_extension_email(request, extension_request):
+                    messages.success(
+                        request,
+                        "Your extension request was sent to the OXPOS administration team.",
+                    )
+                else:
+                    messages.warning(
+                        request,
+                        "Your extension request was recorded, but the email notification could not be sent. The OXPOS administration team can still see it under Requests.",
+                    )
+                return redirect(f"{reverse('settings')}#subscription-extension")
+            messages.error(request, "Please correct the extension request details below.")
         else:
             raise PermissionDenied("This store setting cannot be changed here.")
     return render(
@@ -1205,6 +1290,10 @@ def settings_page(request):
             "store": store,
             "team_form": team_form,
             "schedule_form": schedule_form,
+            "extension_request_form": extension_request_form,
+            "latest_extension_request": store.subscription_extension_requests.select_related(
+                "requested_by"
+            ).first(),
             "starter_price": StoreSettings.PLAN_PRICES["Starter"],
             "pro_price": StoreSettings.PLAN_PRICES["Pro"],
             "report_schedules": store.report_schedules.all(),

@@ -24,13 +24,13 @@
             {% csrf_token %}<input type="hidden" name="next" value="{{ request.path }}">
             <span class="store-avatar">{{ store.business_name|slice:':2'|upper }}</span>
             <label><span class="sr-only">Current Pro store</span><select name="store_id" aria-label="Current Pro store" onchange="this.form.submit()">{% for membership in request.available_memberships %}<option value="{{ membership.store_id }}" {% if membership.store_id == store.pk %}selected{% endif %}>{{ membership.store.business_name }} · {{ membership.store.store_id }}</option>{% endfor %}</select><small>PRO MULTI-STORE · {{ request.available_memberships|length }} stores</small></label>
-            <i class="online-dot {% if not store.is_subscription_active %}offline{% endif %}" title="{{ store.subscription_status }}"></i>
+            <i class="online-dot {{ store.subscription_status|lower }} {% if not store.is_subscription_active %}offline{% endif %}" title="{{ store.subscription_status }}"></i>
         </form>
         {% else %}
         <div class="store-chip">
             <span class="store-avatar">{{ store.business_name|slice:':2'|upper }}</span>
             <span><strong>{{ store.business_name }}</strong><small>Store ID: {{ store.store_id }}</small></span>
-            <i class="online-dot {% if not store.is_subscription_active %}offline{% endif %}" title="{{ store.subscription_status }}"></i>
+            <i class="online-dot {{ store.subscription_status|lower }} {% if not store.is_subscription_active %}offline{% endif %}" title="{{ store.subscription_status }}"></i>
         </div>
         {% endif %}
 
@@ -77,7 +77,7 @@
         <header class="topbar">
             <button class="menu-button" id="menuButton" type="button" aria-label="Open menu" aria-controls="sidebar" aria-expanded="false">☰</button>
             <div class="top-title"><p>{% block section %}Workspace{% endblock %} · {{ store.business_name }}</p><h1>{% block page_title %}OXPOS{% endblock %}</h1></div>
-            <div class="top-actions"><span class="sync-state"><i></i> {{ store.subscription_status }}</span><button class="theme-toggle" id="themeToggle" type="button" aria-label="Switch to dark mode" title="Switch color theme"><span>☾</span></button>{% if store.is_subscription_active %}<a class="primary compact" href="{% url 'sell' %}">＋ New sale</a>{% endif %}</div>
+            <div class="top-actions"><span class="sync-state {{ store.subscription_status|lower }}"><i></i> {{ store.subscription_status }}</span><button class="theme-toggle" id="themeToggle" type="button" aria-label="Switch to dark mode" title="Switch color theme"><span>☾</span></button>{% if store.is_subscription_active %}<a class="primary compact" href="{% url 'sell' %}">＋ New sale</a>{% endif %}</div>
         </header>
 
         <div class="page-wrap">

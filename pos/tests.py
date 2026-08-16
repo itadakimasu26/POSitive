@@ -33,6 +33,7 @@ from .models import (
     StoreAuditEvent,
     StoreMembership,
     StoreSettings,
+    SubscriptionExtensionRequest,
     Supplier,
     UserSecurityProfile,
 )
@@ -175,6 +176,126 @@ class PosFlowTests(StoreTestCase):
         response = self.client.post(reverse("settings"), {"action": "subscription"})
         self.assertEqual(response.status_code, 403)
 
+    @override_settings(
+        EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+        SUPPORT_CONTACT_EMAIL="oxpos-requests@example.com",
+    )
+    def test_expired_store_administrator_can_request_subscription_extension(self):
+        self.store.subscription_end = timezone.localdate() - timedelta(days=1)
+        self.store.save(update_fields=["subscription_end"])
+
+        settings_page = self.client.get(reverse("settings"))
+        self.assertContains(settings_page, "Request a subscription extension")
+        self.assertContains(settings_page, "Requested plan")
+        self.assertContains(settings_page, "Preferred payment type")
+        self.assertContains(settings_page, "Comments (optional)")
+        self.assertContains(settings_page, 'class="sync-state expired"')
+        self.assertContains(settings_page, "online-dot expired")
+
+        blocked_page = self.client.get(reverse("sell"))
+        self.assertEqual(blocked_page.status_code, 403)
+        self.assertContains(blocked_page, "Request an extension", status_code=403)
+
+        response = self.client.post(
+            reverse("settings"),
+            {
+                "action": "extension",
+                "requested_plan": "Pro",
+                "payment_type": "GCash",
+                "comments": "Please contact me in the afternoon.",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, f"{reverse('settings')}#subscription-extension")
+
+        extension_request = SubscriptionExtensionRequest.objects.get()
+        self.assertEqual(extension_request.store, self.store)
+        self.assertEqual(extension_request.requested_by, self.user)
+        self.assertEqual(extension_request.requested_plan, "Pro")
+        self.assertEqual(extension_request.payment_type, "GCash")
+        self.assertEqual(extension_request.status, SubscriptionExtensionRequest.Status.NEW)
+        self.assertIsNotNone(extension_request.email_sent_at)
+        self.assertEqual(extension_request.email_error, "")
+        self.assertTrue(
+            StoreAuditEvent.objects.filter(
+                store=self.store,
+                actor=self.user,
+                action="subscription.extension_requested",
+            ).exists()
+        )
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, ["oxpos-requests@example.com"])
+        self.assertEqual(mail.outbox[0].reply_to, [self.user.email])
+        self.assertIn("First Store (STORE-ONE)", mail.outbox[0].body)
+        self.assertIn("Requested plan: Pro", mail.outbox[0].body)
+        self.assertIn("Preferred payment type: GCash", mail.outbox[0].body)
+        self.assertIn("Please contact me in the afternoon.", mail.outbox[0].body)
+        self.assertIn(
+            reverse("admin:pos_subscriptionextensionrequest_change", args=[extension_request.pk]),
+            mail.outbox[0].body,
+        )
+
+    def test_active_store_cannot_submit_subscription_extension_request(self):
+        response = self.client.post(
+            reverse("settings"),
+            {
+                "action": "extension",
+                "requested_plan": "Starter",
+                "payment_type": "Cash",
+                "comments": "Not expired.",
+            },
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(SubscriptionExtensionRequest.objects.exists())
+
+    @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+    @patch("pos.views.EmailMessage.send", side_effect=OSError("SMTP unavailable"))
+    def test_extension_request_survives_email_delivery_failure(self, _send_email):
+        self.store.subscription_end = timezone.localdate() - timedelta(days=1)
+        self.store.save(update_fields=["subscription_end"])
+
+        response = self.client.post(
+            reverse("settings"),
+            {
+                "action": "extension",
+                "requested_plan": "Starter",
+                "payment_type": "Bank transfer",
+                "comments": "Please send bank instructions.",
+            },
+            follow=True,
+        )
+        self.assertContains(response, "request was recorded")
+        extension_request = SubscriptionExtensionRequest.objects.get()
+        self.assertIsNone(extension_request.email_sent_at)
+        self.assertIn("OSError", extension_request.email_error)
+
+    def test_pro_report_performance_cards_have_padded_headings(self):
+        self.store.active_plan = "Pro"
+        self.store.save(update_fields=["active_plan"])
+        response = self.client.get(reverse("reports"))
+        self.assertContains(response, 'class="card-head table-heading"', count=4)
+
+    def test_pro_administrator_can_remove_scheduled_report_recipient(self):
+        self.store.active_plan = "Pro"
+        self.store.save(update_fields=["active_plan"])
+        schedule = ReportSchedule.objects.create(
+            store=self.store,
+            recipient_email="remove-me@example.com",
+            frequency=ReportSchedule.Frequency.DAILY,
+        )
+        response = self.client.post(
+            reverse("remove_report_schedule", args=[schedule.pk]),
+        )
+        self.assertRedirects(response, reverse("settings"))
+        self.assertFalse(ReportSchedule.objects.filter(pk=schedule.pk).exists())
+        self.assertTrue(
+            StoreAuditEvent.objects.filter(
+                store=self.store,
+                actor=self.user,
+                action="report.schedule_removed",
+            ).exists()
+        )
+
     def test_duplicate_cart_lines_are_consolidated(self):
         response = self.client.post(
             reverse("complete_sale"),
@@ -217,6 +338,21 @@ class PosFlowTests(StoreTestCase):
         self.assertContains(response, "Test Latte")
         export = self.client.get(reverse("export_products"))
         self.assertIn(b"Test Latte", export.content)
+
+    def test_quick_stock_adjustment_endpoint_updates_inventory_and_audit(self):
+        response = self.client.post(
+            reverse("adjust_stock", args=[self.product.pk]),
+            {"amount": "5", "reason": "Release health check"},
+        )
+        self.assertRedirects(response, reverse("products"))
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock, 15)
+        movement = InventoryMovement.objects.get(
+            product=self.product,
+            movement_type=InventoryMovement.MovementType.ADJUSTMENT,
+        )
+        self.assertEqual(movement.quantity, 5)
+        self.assertEqual(movement.reason, "Release health check")
 
     def test_product_uses_name_based_placeholder_and_picture_can_be_edited(self):
         placeholder_url = reverse("product_placeholder", args=[self.product.pk])
@@ -1069,6 +1205,40 @@ class PlatformAdministrationTests(TestCase):
             [row["store"].business_name for row in response.context["expiring_store_rows"]],
             ["Due Soon"],
         )
+
+    def test_platform_dashboard_surfaces_subscription_extension_requests(self):
+        requester = User.objects.create_user(
+            username="expired-owner",
+            email="expired@example.com",
+            password="expired-owner-password-42",
+        )
+        store = StoreSettings.objects.create(
+            business_name="Expired Request Store",
+            store_id="EXPIRED-REQ",
+            active_plan="Starter",
+            subscription_end=timezone.localdate() - timedelta(days=1),
+        )
+        extension_request = SubscriptionExtensionRequest.objects.create(
+            store=store,
+            requested_by=requester,
+            requested_plan="Pro",
+            payment_type="Maya / card",
+            comments="We would like to move to Pro.",
+        )
+
+        self.client.force_login(self.superuser)
+        response = self.client.get(reverse("admin:index"))
+        self.assertContains(response, "Requests")
+        self.assertContains(response, "Expired Request Store")
+        self.assertContains(response, "Pro · Maya / card")
+        self.assertContains(
+            response,
+            reverse(
+                "admin:pos_subscriptionextensionrequest_change",
+                args=[extension_request.pk],
+            ),
+        )
+        self.assertEqual(response.context["open_extension_request_count"], 1)
 
     def test_platform_can_assign_one_administrator_login_to_multiple_stores(self):
         owner = User.objects.create_user(

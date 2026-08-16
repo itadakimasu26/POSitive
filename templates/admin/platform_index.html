@@ -14,6 +14,22 @@
         <article class="muted"><span>Suspended</span><strong>{{ suspended_store_count }}</strong></article>
     </div>
 
+    <article class="requests-widget">
+        <div class="platform-card-head"><div><h2>Requests</h2><p>Subscription extension requests submitted by expired stores.</p></div><a class="widget-link" href="{% url 'admin:pos_subscriptionextensionrequest_changelist' %}">{{ open_extension_request_count }} open · View all</a></div>
+        {% if extension_request_rows %}
+        <div class="request-list">
+            {% for extension_request in extension_request_rows %}
+            <a href="{% url 'admin:pos_subscriptionextensionrequest_change' extension_request.pk %}">
+                <span class="store-initial">{{ extension_request.store.business_name|slice:':2'|upper }}</span>
+                <span><strong>{{ extension_request.store.business_name }}</strong><small>{{ extension_request.requested_plan }} · {{ extension_request.payment_type }} · {% if extension_request.requested_by %}{{ extension_request.requested_by.get_full_name|default:extension_request.requested_by.username }}{% else %}Deleted user{% endif %}</small></span>
+                <b class="request-state {{ extension_request.status|lower|cut:' ' }}">{{ extension_request.status }}</b>
+                <time>{{ extension_request.created_at|date:'M j, g:i A' }}</time>
+            </a>
+            {% endfor %}
+        </div>
+        {% else %}<p class="platform-empty">No subscription extension requests have been submitted.</p>{% endif %}
+    </article>
+
     <article class="expiry-widget">
         <div class="platform-card-head"><div><h2>Subscriptions ending within 5 days</h2><p>Review these stores before their access expires.</p></div><span>{{ expiring_store_rows|length }} due</span></div>
         {% if expiring_store_rows %}

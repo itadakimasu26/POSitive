@@ -417,6 +417,63 @@ class StoreSettings(models.Model):
         return f"{self.business_name} ({self.store_id})"
 
 
+class SubscriptionExtensionRequest(models.Model):
+    class PaymentType(models.TextChoices):
+        GCASH = "GCash", "GCash"
+        MAYA_CARD = "Maya / card", "Maya / card"
+        BANK_TRANSFER = "Bank transfer", "Bank transfer"
+        CASH = "Cash", "Cash"
+
+    class Status(models.TextChoices):
+        NEW = "New", "New"
+        IN_REVIEW = "In review", "In review"
+        COMPLETED = "Completed", "Completed"
+        DECLINED = "Declined", "Declined"
+
+    PLAN_CHOICES = [
+        ("Starter", "Starter"),
+        ("Pro", "Pro"),
+    ]
+
+    store = models.ForeignKey(
+        StoreSettings,
+        on_delete=models.CASCADE,
+        related_name="subscription_extension_requests",
+    )
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="subscription_extension_requests",
+        blank=True,
+        null=True,
+    )
+    requested_plan = models.CharField(max_length=20, choices=PLAN_CHOICES)
+    payment_type = models.CharField(max_length=30, choices=PaymentType.choices)
+    comments = models.TextField(blank=True, max_length=1000)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.NEW)
+    admin_notes = models.TextField(blank=True)
+    email_sent_at = models.DateTimeField(blank=True, null=True)
+    email_error = models.CharField(max_length=500, blank=True)
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="reviewed_subscription_extension_requests",
+        blank=True,
+        null=True,
+    )
+    reviewed_at = models.DateTimeField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "subscription extension request"
+        verbose_name_plural = "subscription extension requests"
+
+    def __str__(self):
+        return f"{self.store.store_id} — {self.requested_plan} — {self.status}"
+
+
 class ProductCategory(models.Model):
     store = models.ForeignKey(StoreSettings, on_delete=models.CASCADE, related_name="product_categories")
     name = models.CharField(max_length=60)

@@ -36,6 +36,27 @@
             <article class="plan-card {% if store.active_plan == 'Pro' %}featured{% endif %}">{% if store.active_plan == 'Pro' %}<span class="recommended">CURRENT</span>{% else %}<span class="recommended">PRO</span>{% endif %}<span class="plan-symbol">P</span><h3>Pro</h3><p>Multi-store command center with role-based teams and advanced operations.</p><div class="price"><strong>₱{{ pro_price|floatformat:0 }}</strong><span>/ store / month</span></div><ul><li>Owner super dashboard across Pro stores</li><li>Up to 3 administrators and 10 staff per store</li><li>Advanced inventory, reports, customers, and purchasing</li></ul></article>
         </div>
         <p class="plan-reference-note">Prices are shown for plan comparison. Subscription plans and dates are managed by the platform administrator.</p>
+        {% if store.subscription_status == 'Expired' %}
+        <article class="extension-request-panel" id="subscription-extension">
+            <div class="extension-request-heading">
+                <div><span class="eyebrow">Restore store access</span><h3>Request a subscription extension</h3><p>Choose the plan and preferred payment type. OXPOS administrators will receive this request here and by email.</p></div>
+                {% if latest_extension_request %}<span class="request-status">Latest: {{ latest_extension_request.status }}</span>{% endif %}
+            </div>
+            {% if latest_extension_request %}
+            <div class="latest-request-summary"><span>Last request</span><strong>{{ latest_extension_request.requested_plan }} · {{ latest_extension_request.payment_type }}</strong><small>Sent {{ latest_extension_request.created_at|date:'M j, Y g:i A' }}{% if latest_extension_request.email_sent_at %} · Email delivered{% else %} · Visible to OXPOS admins{% endif %}</small></div>
+            {% endif %}
+            <form method="post" class="extension-request-form">
+                {% csrf_token %}<input type="hidden" name="action" value="extension">
+                {% if extension_request_form.non_field_errors %}<div class="form-error">{{ extension_request_form.non_field_errors }}</div>{% endif %}
+                <div class="extension-request-fields">
+                    <label>{{ extension_request_form.requested_plan.label }}{{ extension_request_form.requested_plan }}{{ extension_request_form.requested_plan.errors }}</label>
+                    <label>{{ extension_request_form.payment_type.label }}{{ extension_request_form.payment_type }}{{ extension_request_form.payment_type.errors }}</label>
+                </div>
+                <label>{{ extension_request_form.comments.label }}{{ extension_request_form.comments }}{{ extension_request_form.comments.errors }}</label>
+                <div class="extension-request-actions"><small>Submitting does not charge you or change the plan automatically. OXPOS will contact the store administrator to complete the extension.</small><button class="primary">Send extension request</button></div>
+            </form>
+        </article>
+        {% endif %}
     </section>
     {% if store.is_pro %}<section class="card settings-card schedule-card"><div class="settings-heading"><span class="quick-icon violet">✉</span><div><h3>Scheduled report emails</h3><p>Send a daily or weekly store summary to registered recipients</p></div></div><div class="schedule-list">{% for schedule in report_schedules %}<div><span><strong>{{ schedule.recipient_email }}</strong><small>{{ schedule.frequency }} · {% if schedule.last_sent_at %}last sent {{ schedule.last_sent_at|date:'M j, g:i A' }}{% else %}not sent yet{% endif %}</small></span><form method="post" action="{% url 'remove_report_schedule' schedule.pk %}">{% csrf_token %}<button class="team-remove">Remove</button></form></div>{% empty %}<p class="empty-small">No scheduled recipients yet.</p>{% endfor %}</div><form method="post" class="schedule-form">{% csrf_token %}<input type="hidden" name="action" value="schedule"><label>Email{{ schedule_form.recipient_email }}{{ schedule_form.recipient_email.errors }}</label><label>Frequency{{ schedule_form.frequency }}{{ schedule_form.frequency.errors }}</label><button class="primary">Add schedule</button></form></section>{% endif %}
 </div>

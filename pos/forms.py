@@ -19,6 +19,7 @@ from .models import (
     ReportSchedule,
     StoreMembership,
     StoreSettings,
+    SubscriptionExtensionRequest,
     Supplier,
     UserSecurityProfile,
 )
@@ -58,6 +59,46 @@ class DemoRequestForm(forms.ModelForm):
         if value:
             raise ValidationError("Unable to submit this request.")
         return value
+
+
+class SubscriptionExtensionRequestForm(forms.ModelForm):
+    class Meta:
+        model = SubscriptionExtensionRequest
+        fields = ["requested_plan", "payment_type", "comments"]
+        labels = {
+            "requested_plan": "Requested plan",
+            "payment_type": "Preferred payment type",
+            "comments": "Comments (optional)",
+        }
+        widgets = {
+            "comments": forms.Textarea(
+                attrs={
+                    "rows": 4,
+                    "maxlength": 1000,
+                    "placeholder": "Add billing details, preferred contact time, or anything OXPOS should know.",
+                }
+            ),
+        }
+
+    def __init__(self, *args, store, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.store = store
+        self.instance.store = store
+        self.fields["requested_plan"].choices = [
+            (
+                plan,
+                f"{plan} — ₱{StoreSettings.PLAN_PRICES[plan]:,.0f}"
+                + (" / store / month" if plan == "Pro" else " / month"),
+            )
+            for plan in ("Starter", "Pro")
+        ]
+        if not self.is_bound:
+            self.initial["requested_plan"] = (
+                store.active_plan if store.active_plan in {"Starter", "Pro"} else "Starter"
+            )
+
+    def clean_comments(self):
+        return self.cleaned_data.get("comments", "").strip()
 
 
 class TrialSignupForm(forms.Form):

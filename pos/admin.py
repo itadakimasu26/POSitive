@@ -6,6 +6,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.admin import UserAdmin
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
+from django.utils import timezone
 
 from positive_pos.admin_site import platform_admin_site
 
@@ -27,6 +28,7 @@ from .models import (
     StoreAuditEvent,
     StoreMembership,
     StoreSettings,
+    SubscriptionExtensionRequest,
     Supplier,
     UserSecurityProfile,
 )
@@ -45,6 +47,85 @@ class DemoRequestAdmin(admin.ModelAdmin):
 
     def has_add_permission(self, request):
         return False
+
+
+@admin.register(SubscriptionExtensionRequest, site=platform_admin_site)
+class SubscriptionExtensionRequestAdmin(admin.ModelAdmin):
+    list_display = (
+        "store",
+        "requested_plan",
+        "payment_type",
+        "requested_by",
+        "status",
+        "email_delivered",
+        "created_at",
+    )
+    list_filter = ("status", "requested_plan", "payment_type", "created_at")
+    search_fields = (
+        "store__business_name",
+        "store__store_id",
+        "requested_by__username",
+        "requested_by__email",
+        "comments",
+        "admin_notes",
+    )
+    list_editable = ("status",)
+    readonly_fields = (
+        "store",
+        "requested_by",
+        "requested_plan",
+        "payment_type",
+        "comments",
+        "email_sent_at",
+        "email_error",
+        "reviewed_by",
+        "reviewed_at",
+        "created_at",
+        "updated_at",
+    )
+    fieldsets = (
+        (
+            "Request",
+            {
+                "fields": (
+                    "store",
+                    "requested_by",
+                    "requested_plan",
+                    "payment_type",
+                    "comments",
+                    "status",
+                )
+            },
+        ),
+        ("Administration notes", {"fields": ("admin_notes",)}),
+        (
+            "Delivery and review",
+            {
+                "fields": (
+                    "email_sent_at",
+                    "email_error",
+                    "reviewed_by",
+                    "reviewed_at",
+                    "created_at",
+                    "updated_at",
+                ),
+                "classes": ("collapse",),
+            },
+        ),
+    )
+
+    @admin.display(boolean=True, description="Email sent")
+    def email_delivered(self, obj):
+        return bool(obj.email_sent_at)
+
+    def has_add_permission(self, request):
+        return False
+
+    def save_model(self, request, obj, form, change):
+        if change and "status" in form.changed_data:
+            obj.reviewed_by = request.user
+            obj.reviewed_at = timezone.now()
+        super().save_model(request, obj, form, change)
 
 
 class ExistingProAdministratorChoiceField(forms.ModelChoiceField):

@@ -200,3 +200,23 @@ fieldset.module h2,.inline-group h2 { padding:12px 17px;background:#eef5f2;color
 /* Pro multi-store administrator assignment */
 .form-row.shared-admin-disabled { opacity:.5 }
 .form-row.pro-option-disabled select { cursor:not-allowed }
+
+/* Subscription extension requests */
+.requests-widget { margin-bottom:13px;padding:18px;border:0;border-radius:11px;background:#fff;box-shadow:0 6px 24px rgba(24,55,45,.05); }
+.widget-link { flex:0 0 auto;padding:6px 9px;border:1px solid #d7e6e0;border-radius:7px;background:#f3f8f6;color:#176d55!important;font-size:9px;font-weight:800; }
+.request-list { display:grid;gap:7px; }
+.request-list > a { display:grid;grid-template-columns:36px minmax(170px,1fr) auto auto;align-items:center;gap:10px;padding:10px;border:1px solid #e1e8e5;border-radius:8px;color:#26342f!important; }
+.request-list > a:hover { border-color:#a8cdbf;background:#f8fbfa; }
+.request-list strong,.request-list small { display:block; }
+.request-list small { margin-top:2px;color:#7b8883;font-size:9px; }
+.request-list time { color:#7b8883;font-size:9px;white-space:nowrap; }
+.request-state { padding:4px 7px;border-radius:99px;background:#edf1ef;color:#59635f;font-size:8px;white-space:nowrap; }
+.request-state.new { background:#fff0e8;color:#b9542b; }
+.request-state.inreview { background:#e7f3ff;color:#276b97; }
+.request-state.completed { background:#e5f6ee;color:#087254; }
+.request-state.declined { background:#f7e9e9;color:#a83b3b; }
+@media (max-width:700px) {
+  .request-list > a { grid-template-columns:36px minmax(0,1fr) auto; }
+  .request-list time { grid-column:2; }
+  .request-state { grid-column:3;grid-row:1/3; }
+}
