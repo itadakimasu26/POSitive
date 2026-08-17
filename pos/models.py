@@ -1,10 +1,12 @@
 import uuid
+from calendar import monthrange
+from datetime import date, timedelta
 from decimal import Decimal
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.validators import MaxValueValidator, MinValueValidator
-from django.db import models
+from django.db import models, transaction
 from django.db.models import Q, Sum
 from django.utils import timezone
 
@@ -454,6 +456,8 @@ class SubscriptionExtensionRequest(models.Model):
     admin_notes = models.TextField(blank=True)
     email_sent_at = models.DateTimeField(blank=True, null=True)
     email_error = models.CharField(max_length=500, blank=True)
+    status_email_sent_at = models.DateTimeField(blank=True, null=True)
+    status_email_error = models.CharField(max_length=500, blank=True)
     reviewed_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -462,6 +466,9 @@ class SubscriptionExtensionRequest(models.Model):
         null=True,
     )
     reviewed_at = models.DateTimeField(blank=True, null=True)
+    activated_at = models.DateTimeField(blank=True, null=True)
+    extension_start = models.DateField(blank=True, null=True)
+    extension_end = models.DateField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -469,6 +476,75 @@ class SubscriptionExtensionRequest(models.Model):
         ordering = ["-created_at"]
         verbose_name = "subscription extension request"
         verbose_name_plural = "subscription extension requests"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["store"],
+                condition=Q(status__in=["New", "In review"]),
+                name="one_open_subscription_extension_request_per_store",
+            ),
+        ]
+
+    @staticmethod
+    def one_month_end(start):
+        """Return the inclusive end date of a one-calendar-month term."""
+        year = start.year + (start.month // 12)
+        month = (start.month % 12) + 1
+        days_in_next_month = monthrange(year, month)[1]
+        if start.day > days_in_next_month:
+            return date(year, month, days_in_next_month)
+        return date(year, month, start.day) - timedelta(days=1)
+
+    def activate_subscription(self):
+        """Apply this completed request exactly once and return whether it ran."""
+        if not self.pk:
+            raise ValidationError("Save the extension request before activating it.")
+        if self.status != self.Status.COMPLETED:
+            raise ValidationError({"status": "Only a completed request can activate a subscription."})
+
+        with transaction.atomic():
+            locked_request = type(self).objects.select_for_update().get(pk=self.pk)
+            if locked_request.activated_at:
+                self.activated_at = locked_request.activated_at
+                self.extension_start = locked_request.extension_start
+                self.extension_end = locked_request.extension_end
+                return False
+
+            store = StoreSettings.objects.select_for_update().get(pk=locked_request.store_id)
+            today = timezone.localdate()
+            was_active = store.subscription_status == "Active"
+            if was_active and store.subscription_end:
+                extension_start = store.subscription_end + timedelta(days=1)
+            else:
+                extension_start = today
+                store.subscription_start = extension_start
+            extension_end = self.one_month_end(extension_start)
+
+            store.active_plan = locked_request.requested_plan
+            store.status = "Active"
+            store.subscription_end = extension_end
+            store.full_clean()
+            store.save(
+                update_fields=[
+                    "active_plan",
+                    "status",
+                    "subscription_start",
+                    "subscription_end",
+                    "updated_at",
+                ]
+            )
+
+            activated_at = timezone.now()
+            locked_request.activated_at = activated_at
+            locked_request.extension_start = extension_start
+            locked_request.extension_end = extension_end
+            locked_request.save(
+                update_fields=["activated_at", "extension_start", "extension_end", "updated_at"]
+            )
+            self.store = store
+            self.activated_at = activated_at
+            self.extension_start = extension_start
+            self.extension_end = extension_end
+            return True
 
     def __str__(self):
         return f"{self.store.store_id} — {self.requested_plan} — {self.status}"

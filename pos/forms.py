@@ -100,6 +100,23 @@ class SubscriptionExtensionRequestForm(forms.ModelForm):
     def clean_comments(self):
         return self.cleaned_data.get("comments", "").strip()
 
+    def clean_requested_plan(self):
+        requested_plan = self.cleaned_data["requested_plan"]
+        if requested_plan == "Starter":
+            assigned_user_ids = self.store.memberships.filter(active=True).values_list(
+                "user_id", flat=True
+            )
+            shared_assignments_exist = StoreMembership.objects.filter(
+                user_id__in=assigned_user_ids,
+                active=True,
+            ).exclude(store=self.store).exists()
+            if shared_assignments_exist:
+                raise ValidationError(
+                    "Starter is unavailable while this store has users assigned to other stores. "
+                    "Choose Pro or remove the shared assignments first."
+                )
+        return requested_plan
+
 
 class TrialSignupForm(forms.Form):
     business_name = forms.CharField(

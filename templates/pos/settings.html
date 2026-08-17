@@ -45,6 +45,9 @@
             {% if latest_extension_request %}
             <div class="latest-request-summary"><span>Last request</span><strong>{{ latest_extension_request.requested_plan }} · {{ latest_extension_request.payment_type }}</strong><small>Sent {{ latest_extension_request.created_at|date:'M j, Y g:i A' }}{% if latest_extension_request.email_sent_at %} · Email delivered{% else %} · Visible to OXPOS admins{% endif %}</small></div>
             {% endif %}
+            {% if open_extension_request %}
+            <div class="latest-request-summary"><span>Request under review</span><strong>{{ open_extension_request.requested_plan }} · {{ open_extension_request.payment_type }}</strong><small>You do not need to submit another request. OXPOS will email {{ open_extension_request.requested_by.email|default:'the requesting administrator' }} when its status changes.</small></div>
+            {% else %}
             <form method="post" class="extension-request-form">
                 {% csrf_token %}<input type="hidden" name="action" value="extension">
                 {% if extension_request_form.non_field_errors %}<div class="form-error">{{ extension_request_form.non_field_errors }}</div>{% endif %}
@@ -53,8 +56,9 @@
                     <label>{{ extension_request_form.payment_type.label }}{{ extension_request_form.payment_type }}{{ extension_request_form.payment_type.errors }}</label>
                 </div>
                 <label>{{ extension_request_form.comments.label }}{{ extension_request_form.comments }}{{ extension_request_form.comments.errors }}</label>
-                <div class="extension-request-actions"><small>Submitting does not charge you or change the plan automatically. OXPOS will contact the store administrator to complete the extension.</small><button class="primary">Send extension request</button></div>
+                <div class="extension-request-actions"><small>Submitting does not charge you. The selected one-month plan activates only after an OXPOS administrator marks the request completed.</small><button class="primary">Send extension request</button></div>
             </form>
+            {% endif %}
         </article>
         {% endif %}
     </section>

@@ -63,6 +63,7 @@ from .models import (
     StoreAuditEvent,
     StoreMembership,
     StoreSettings,
+    SubscriptionExtensionRequest,
     Supplier,
 )
 from .registers import assign_open_register
@@ -1217,6 +1218,12 @@ def reports(request):
 @store_required(administrator=True)
 def settings_page(request):
     store = request.store
+    open_extension_request = store.subscription_extension_requests.filter(
+        status__in=[
+            SubscriptionExtensionRequest.Status.NEW,
+            SubscriptionExtensionRequest.Status.IN_REVIEW,
+        ]
+    ).select_related("requested_by").first()
     team_form = StoreTeamMemberForm(store=store)
     schedule_form = ReportScheduleForm(store=store)
     extension_request_form = SubscriptionExtensionRequestForm(store=store)
@@ -1255,11 +1262,27 @@ def settings_page(request):
         elif action == "extension":
             if store.subscription_status != "Expired":
                 raise PermissionDenied("Extension requests are available only after a subscription expires.")
+            if open_extension_request:
+                messages.info(
+                    request,
+                    "This store already has an extension request under review. "
+                    "OXPOS will email the requesting administrator when its status changes.",
+                )
+                return redirect(f"{reverse('settings')}#subscription-extension")
             extension_request_form = SubscriptionExtensionRequestForm(request.POST, store=store)
             if extension_request_form.is_valid():
                 extension_request = extension_request_form.save(commit=False)
                 extension_request.requested_by = request.user
-                extension_request.save()
+                try:
+                    with transaction.atomic():
+                        extension_request.save()
+                except IntegrityError:
+                    messages.info(
+                        request,
+                        "This store already has an extension request under review. "
+                        "OXPOS will email the requesting administrator when its status changes.",
+                    )
+                    return redirect(f"{reverse('settings')}#subscription-extension")
                 _audit(
                     store,
                     request.user,
@@ -1291,6 +1314,7 @@ def settings_page(request):
             "team_form": team_form,
             "schedule_form": schedule_form,
             "extension_request_form": extension_request_form,
+            "open_extension_request": open_extension_request,
             "latest_extension_request": store.subscription_extension_requests.select_related(
                 "requested_by"
             ).first(),

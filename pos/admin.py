@@ -1,7 +1,7 @@
 from decimal import Decimal
 
 from django import forms
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.contrib.auth import get_user_model
 from django.contrib.auth.admin import UserAdmin
 from django.contrib.auth.password_validation import validate_password
@@ -32,6 +32,7 @@ from .models import (
     Supplier,
     UserSecurityProfile,
 )
+from .subscription_requests import deliver_extension_status_email
 
 
 User = get_user_model()
@@ -49,8 +50,44 @@ class DemoRequestAdmin(admin.ModelAdmin):
         return False
 
 
+class SubscriptionExtensionRequestAdminForm(forms.ModelForm):
+    class Meta:
+        model = SubscriptionExtensionRequest
+        fields = "__all__"
+
+    def clean_status(self):
+        status = self.cleaned_data["status"]
+        extension_request = self.instance
+        if (
+            extension_request.activated_at
+            and status != SubscriptionExtensionRequest.Status.COMPLETED
+        ):
+            raise ValidationError(
+                "An activated request must remain Completed. Subscription activation is not "
+                "rolled back by changing request status."
+            )
+        if (
+            status == SubscriptionExtensionRequest.Status.COMPLETED
+            and not extension_request.activated_at
+            and extension_request.requested_plan == "Starter"
+        ):
+            assigned_user_ids = extension_request.store.memberships.filter(
+                active=True
+            ).values_list("user_id", flat=True)
+            if StoreMembership.objects.filter(
+                user_id__in=assigned_user_ids,
+                active=True,
+            ).exclude(store=extension_request.store).exists():
+                raise ValidationError(
+                    "This request cannot be completed as Starter while the store has shared user "
+                    "assignments. Change those assignments or ask the store to request Pro."
+                )
+        return status
+
+
 @admin.register(SubscriptionExtensionRequest, site=platform_admin_site)
 class SubscriptionExtensionRequestAdmin(admin.ModelAdmin):
+    form = SubscriptionExtensionRequestAdminForm
     list_display = (
         "store",
         "requested_plan",
@@ -58,6 +95,7 @@ class SubscriptionExtensionRequestAdmin(admin.ModelAdmin):
         "requested_by",
         "status",
         "email_delivered",
+        "subscription_activated",
         "created_at",
     )
     list_filter = ("status", "requested_plan", "payment_type", "created_at")
@@ -78,8 +116,13 @@ class SubscriptionExtensionRequestAdmin(admin.ModelAdmin):
         "comments",
         "email_sent_at",
         "email_error",
+        "status_email_sent_at",
+        "status_email_error",
         "reviewed_by",
         "reviewed_at",
+        "activated_at",
+        "extension_start",
+        "extension_end",
         "created_at",
         "updated_at",
     )
@@ -104,8 +147,13 @@ class SubscriptionExtensionRequestAdmin(admin.ModelAdmin):
                 "fields": (
                     "email_sent_at",
                     "email_error",
+                    "status_email_sent_at",
+                    "status_email_error",
                     "reviewed_by",
                     "reviewed_at",
+                    "activated_at",
+                    "extension_start",
+                    "extension_end",
                     "created_at",
                     "updated_at",
                 ),
@@ -118,14 +166,49 @@ class SubscriptionExtensionRequestAdmin(admin.ModelAdmin):
     def email_delivered(self, obj):
         return bool(obj.email_sent_at)
 
+    @admin.display(boolean=True, description="Activated")
+    def subscription_activated(self, obj):
+        return bool(obj.activated_at)
+
     def has_add_permission(self, request):
         return False
 
     def save_model(self, request, obj, form, change):
-        if change and "status" in form.changed_data:
+        status_changed = change and "status" in form.changed_data
+        if status_changed:
             obj.reviewed_by = request.user
             obj.reviewed_at = timezone.now()
         super().save_model(request, obj, form, change)
+        if not status_changed:
+            return
+
+        if obj.status == SubscriptionExtensionRequest.Status.COMPLETED:
+            activated = obj.activate_subscription()
+            if activated:
+                StoreAuditEvent.objects.create(
+                    store=obj.store,
+                    actor=request.user,
+                    approved_by=request.user,
+                    action="subscription.extension_completed",
+                    description=(
+                        f"Activated {obj.requested_plan} from {obj.extension_start} "
+                        f"through {obj.extension_end} from extension request #{obj.pk}."
+                    ),
+                )
+                self.message_user(
+                    request,
+                    f"{obj.store.business_name} is active on {obj.requested_plan} through "
+                    f"{obj.extension_end:%b %d, %Y}.",
+                    level=messages.SUCCESS,
+                )
+
+        if not deliver_extension_status_email(obj):
+            self.message_user(
+                request,
+                "The status was saved, but the requester email could not be delivered. "
+                "Check the delivery details on this request.",
+                level=messages.WARNING,
+            )
 
 
 class ExistingProAdministratorChoiceField(forms.ModelChoiceField):

@@ -1,7 +1,7 @@
 import csv
 import json
 import tempfile
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 from io import StringIO
 from pathlib import Path
@@ -233,6 +233,59 @@ class PosFlowTests(StoreTestCase):
         self.assertIn(
             reverse("admin:pos_subscriptionextensionrequest_change", args=[extension_request.pk]),
             mail.outbox[0].body,
+        )
+
+        pending_page = self.client.get(reverse("settings"))
+        self.assertContains(pending_page, "Request under review")
+        self.assertNotContains(pending_page, "Send extension request")
+        duplicate_response = self.client.post(
+            reverse("settings"),
+            {
+                "action": "extension",
+                "requested_plan": "Starter",
+                "payment_type": "Cash",
+                "comments": "Duplicate request.",
+            },
+            follow=True,
+        )
+        self.assertContains(duplicate_response, "already has an extension request under review")
+        self.assertEqual(SubscriptionExtensionRequest.objects.count(), 1)
+        self.assertEqual(len(mail.outbox), 1)
+
+    def test_database_prevents_two_open_extension_requests_for_one_store(self):
+        first_request = SubscriptionExtensionRequest.objects.create(
+            store=self.store,
+            requested_by=self.user,
+            requested_plan="Starter",
+            payment_type="Cash",
+        )
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                SubscriptionExtensionRequest.objects.create(
+                    store=self.store,
+                    requested_by=self.user,
+                    requested_plan="Pro",
+                    payment_type="GCash",
+                )
+
+        first_request.status = SubscriptionExtensionRequest.Status.DECLINED
+        first_request.save(update_fields=["status"])
+        second_request = SubscriptionExtensionRequest.objects.create(
+            store=self.store,
+            requested_by=self.user,
+            requested_plan="Pro",
+            payment_type="GCash",
+        )
+        self.assertEqual(second_request.status, SubscriptionExtensionRequest.Status.NEW)
+
+    def test_calendar_month_extension_end_is_inclusive(self):
+        self.assertEqual(
+            SubscriptionExtensionRequest.one_month_end(date(2026, 8, 17)),
+            date(2026, 9, 16),
+        )
+        self.assertEqual(
+            SubscriptionExtensionRequest.one_month_end(date(2026, 1, 31)),
+            date(2026, 2, 28),
         )
 
     def test_active_store_cannot_submit_subscription_extension_request(self):
@@ -1239,6 +1292,75 @@ class PlatformAdministrationTests(TestCase):
             ),
         )
         self.assertEqual(response.context["open_extension_request_count"], 1)
+
+    @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+    def test_completing_extension_request_activates_one_month_and_emails_requester(self):
+        today = timezone.localdate()
+        requester = User.objects.create_user(
+            username="activation-owner",
+            email="activation@example.com",
+            password="activation-owner-password-42",
+        )
+        store = StoreSettings.objects.create(
+            business_name="Activation Store",
+            store_id="ACTIVATE-REQ",
+            active_plan="Starter",
+            status="Active",
+            subscription_start=today - timedelta(days=31),
+            subscription_end=today - timedelta(days=1),
+        )
+        extension_request = SubscriptionExtensionRequest.objects.create(
+            store=store,
+            requested_by=requester,
+            requested_plan="Pro",
+            payment_type="GCash",
+            comments="Please reactivate us.",
+        )
+
+        self.client.force_login(self.superuser)
+        response = self.client.post(
+            reverse(
+                "admin:pos_subscriptionextensionrequest_change",
+                args=[extension_request.pk],
+            ),
+            {
+                "status": SubscriptionExtensionRequest.Status.COMPLETED,
+                "admin_notes": "Internal payment reference that must stay private.",
+                "_save": "Save",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+
+        store.refresh_from_db()
+        extension_request.refresh_from_db()
+        expected_end = SubscriptionExtensionRequest.one_month_end(today)
+        self.assertEqual(store.active_plan, "Pro")
+        self.assertEqual(store.subscription_status, "Active")
+        self.assertEqual(store.subscription_start, today)
+        self.assertEqual(store.subscription_end, expected_end)
+        self.assertEqual(extension_request.status, SubscriptionExtensionRequest.Status.COMPLETED)
+        self.assertEqual(extension_request.extension_start, today)
+        self.assertEqual(extension_request.extension_end, expected_end)
+        self.assertIsNotNone(extension_request.activated_at)
+        self.assertIsNotNone(extension_request.status_email_sent_at)
+        self.assertEqual(extension_request.status_email_error, "")
+        self.assertTrue(
+            StoreAuditEvent.objects.filter(
+                store=store,
+                actor=self.superuser,
+                action="subscription.extension_completed",
+            ).exists()
+        )
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, [requester.email])
+        self.assertIn("is now Completed", mail.outbox[0].body)
+        self.assertIn(f"through {expected_end:%b %d, %Y}", mail.outbox[0].body)
+        self.assertNotIn("Internal payment reference", mail.outbox[0].body)
+
+        original_end = store.subscription_end
+        self.assertFalse(extension_request.activate_subscription())
+        store.refresh_from_db()
+        self.assertEqual(store.subscription_end, original_end)
 
     def test_platform_can_assign_one_administrator_login_to_multiple_stores(self):
         owner = User.objects.create_user(

@@ -26,7 +26,7 @@ OXPOS is a responsive point-of-sale web application built with Python and Django
 - Pro stocktakes, inventory movement history, inter-store transfers, and bulk product import
 - Pro shared daily cash register with staff handovers, logout custody tracking, reconciliation, and audit CSV export
 - Platform-managed plans, published prices, subscription dates, and expiry monitoring
-- Expired-store extension requests with plan, payment preference, comments, platform-admin tracking, and OXPOS email notification
+- Expired-store extension requests with duplicate protection, plan and payment preferences, OXPOS/admin notifications, and one-month activation after platform approval
 - Public feature/plan comparison and downloadable PDF guide
 - Persistent light and dark themes for store workspaces
 - Django administration area
