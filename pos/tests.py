@@ -234,6 +234,18 @@ class PosFlowTests(StoreTestCase):
             reverse("admin:pos_subscriptionextensionrequest_change", args=[extension_request.pk]),
             mail.outbox[0].body,
         )
+        self.assertEqual(len(mail.outbox[0].alternatives), 1)
+        self.assertEqual(mail.outbox[0].alternatives[0].mimetype, "text/html")
+        request_html = mail.outbox[0].alternatives[0].content
+        self.assertIn("New subscription extension request", request_html)
+        self.assertIn("Action requested", request_html)
+        self.assertIn("Review request in OXPOS", request_html)
+        self.assertIn("First Store", request_html)
+        self.assertIn("Please contact me in the afternoon.", request_html)
+        self.assertIn(
+            reverse("admin:pos_subscriptionextensionrequest_change", args=[extension_request.pk]),
+            request_html,
+        )
 
         pending_page = self.client.get(reverse("settings"))
         self.assertContains(pending_page, "Request under review")
@@ -302,7 +314,7 @@ class PosFlowTests(StoreTestCase):
         self.assertFalse(SubscriptionExtensionRequest.objects.exists())
 
     @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
-    @patch("pos.views.EmailMessage.send", side_effect=OSError("SMTP unavailable"))
+    @patch("pos.views.EmailMultiAlternatives.send", side_effect=OSError("SMTP unavailable"))
     def test_extension_request_survives_email_delivery_failure(self, _send_email):
         self.store.subscription_end = timezone.localdate() - timedelta(days=1)
         self.store.save(update_fields=["subscription_end"])
@@ -1356,11 +1368,72 @@ class PlatformAdministrationTests(TestCase):
         self.assertIn("is now Completed", mail.outbox[0].body)
         self.assertIn(f"through {expected_end:%b %d, %Y}", mail.outbox[0].body)
         self.assertNotIn("Internal payment reference", mail.outbox[0].body)
+        self.assertEqual(len(mail.outbox[0].alternatives), 1)
+        self.assertEqual(mail.outbox[0].alternatives[0].mimetype, "text/html")
+        status_html = mail.outbox[0].alternatives[0].content
+        self.assertIn("Your store access is active", status_html)
+        self.assertIn("Active subscription term", status_html)
+        self.assertIn("Pro plan · Access restored", status_html)
+        self.assertNotIn("Internal payment reference", status_html)
 
         original_end = store.subscription_end
         self.assertFalse(extension_request.activate_subscription())
         store.refresh_from_db()
         self.assertEqual(store.subscription_end, original_end)
+
+    @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+    def test_review_and_decline_status_emails_use_branded_variants(self):
+        requester = User.objects.create_user(
+            username="review-owner",
+            email="review-owner@example.com",
+            password="review-owner-password-42",
+        )
+        store = StoreSettings.objects.create(
+            business_name="Review Status Store",
+            store_id="REVIEW-STATUS",
+            active_plan="Starter",
+            subscription_end=timezone.localdate() - timedelta(days=1),
+        )
+        extension_request = SubscriptionExtensionRequest.objects.create(
+            store=store,
+            requested_by=requester,
+            requested_plan="Starter",
+            payment_type="Bank transfer",
+        )
+        change_url = reverse(
+            "admin:pos_subscriptionextensionrequest_change",
+            args=[extension_request.pk],
+        )
+        self.client.force_login(self.superuser)
+
+        review_response = self.client.post(
+            change_url,
+            {
+                "status": SubscriptionExtensionRequest.Status.IN_REVIEW,
+                "admin_notes": "Checking payment details.",
+                "_save": "Save",
+            },
+        )
+        self.assertEqual(review_response.status_code, 302)
+        self.assertEqual(len(mail.outbox), 1)
+        review_html = mail.outbox[0].alternatives[0].content
+        self.assertIn("We’re reviewing your request", review_html)
+        self.assertIn("In review", review_html)
+
+        decline_response = self.client.post(
+            change_url,
+            {
+                "status": SubscriptionExtensionRequest.Status.DECLINED,
+                "admin_notes": "Checking payment details.",
+                "_save": "Save",
+            },
+        )
+        self.assertEqual(decline_response.status_code, 302)
+        self.assertEqual(len(mail.outbox), 2)
+        decline_html = mail.outbox[1].alternatives[0].content
+        self.assertIn("Your request needs another option", decline_html)
+        self.assertIn("Declined", decline_html)
+        self.assertNotIn("Checking payment details", decline_html)
 
     def test_platform_can_assign_one_administrator_login_to_multiple_stores(self):
         owner = User.objects.create_user(

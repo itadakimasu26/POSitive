@@ -14,12 +14,13 @@ from django.contrib import messages
 from django.contrib.auth import authenticate, login
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied, ValidationError
-from django.core.mail import EmailMessage
+from django.core.mail import EmailMessage, EmailMultiAlternatives
 from django.db import IntegrityError, transaction
 from django.db.models import Count, DecimalField, ExpressionWrapper, F, Q, Sum
 from django.http import FileResponse, Http404, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.templatetags.static import static
+from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
@@ -188,32 +189,23 @@ def _deliver_subscription_extension_email(request, extension_request):
             args=[extension_request.pk],
         )
     )
-    body = "\n".join(
-        [
-            "A store administrator submitted a subscription extension request.",
-            "",
-            f"Request ID: {extension_request.pk}",
-            f"Store: {extension_request.store.business_name} ({extension_request.store.store_id})",
-            f"Current plan: {extension_request.store.active_plan}",
-            f"Subscription ended: {extension_request.store.subscription_end or 'Not set'}",
-            f"Requested plan: {extension_request.requested_plan}",
-            f"Preferred payment type: {extension_request.payment_type}",
-            f"Requested by: {requester_name} (@{requester.username})",
-            f"Requester email: {requester.email or 'Not provided'}",
-            "",
-            "Comments:",
-            extension_request.comments or "No comments provided.",
-            "",
-            f"Review in OXPOS Administration: {admin_url}",
-        ]
-    )
+    email_context = {
+        "admin_url": admin_url,
+        "extension_request": extension_request,
+        "requester_name": requester_name,
+        "support_email": django_settings.SUPPORT_CONTACT_EMAIL,
+    }
+    body = render_to_string("email/subscription_extension_request.txt", email_context)
+    html_body = render_to_string("email/subscription_extension_request.html", email_context)
     try:
-        delivered = EmailMessage(
+        message = EmailMultiAlternatives(
             subject=f"OXPOS subscription extension request — {extension_request.store.store_id}",
             body=body,
             to=[django_settings.SUPPORT_CONTACT_EMAIL],
             reply_to=[requester.email] if requester.email else None,
-        ).send(fail_silently=False)
+        )
+        message.attach_alternative(html_body, "text/html")
+        delivered = message.send(fail_silently=False)
         if delivered != 1:
             raise RuntimeError("The configured email backend did not accept the message.")
     except Exception as exc:  # The database request must survive an email-provider outage.

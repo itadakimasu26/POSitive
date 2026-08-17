@@ -1,6 +1,8 @@
 import logging
 
-from django.core.mail import EmailMessage
+from django.conf import settings
+from django.core.mail import EmailMultiAlternatives
+from django.template.loader import render_to_string
 from django.utils import timezone
 
 
@@ -15,38 +17,25 @@ def deliver_extension_status_email(extension_request):
         extension_request.save(update_fields=["status_email_error", "updated_at"])
         return False
 
-    body_lines = [
-        f"Hello {requester.get_full_name() or requester.username},",
-        "",
-        f"Your subscription extension request for {extension_request.store.business_name} "
-        f"({extension_request.store.store_id}) is now {extension_request.status}.",
-        "",
-        f"Requested plan: {extension_request.requested_plan}",
-        f"Preferred payment type: {extension_request.payment_type}",
-    ]
-    if extension_request.activated_at:
-        body_lines.extend(
-            [
-                f"Subscription term: {extension_request.extension_start:%b %d, %Y} "
-                f"through {extension_request.extension_end:%b %d, %Y}",
-                "Your store access is active now.",
-            ]
-        )
-    elif extension_request.status == extension_request.Status.IN_REVIEW:
-        body_lines.append("The OXPOS administration team is reviewing your request.")
-    elif extension_request.status == extension_request.Status.DECLINED:
-        body_lines.append("Please contact OXPOS if you would like help with another plan or payment option.")
-    body_lines.extend(["", "Thank you,", "OXPOS Administration"])
+    email_context = {
+        "extension_request": extension_request,
+        "requester_name": requester.get_full_name() or requester.username,
+        "support_email": settings.SUPPORT_CONTACT_EMAIL,
+    }
+    body = render_to_string("email/subscription_extension_status.txt", email_context)
+    html_body = render_to_string("email/subscription_extension_status.html", email_context)
 
     try:
-        delivered = EmailMessage(
+        message = EmailMultiAlternatives(
             subject=(
                 f"OXPOS extension request {extension_request.status.lower()} - "
                 f"{extension_request.store.store_id}"
             ),
-            body="\n".join(body_lines),
+            body=body,
             to=[requester.email],
-        ).send(fail_silently=False)
+        )
+        message.attach_alternative(html_body, "text/html")
+        delivered = message.send(fail_silently=False)
         if delivered != 1:
             raise RuntimeError("The configured email backend did not accept the message.")
     except Exception as exc:

@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light">
+    <title>New OXPOS subscription extension request</title>
+    <style>
+        @media only screen and (max-width: 640px) {
+            .email-shell { width: 100% !important; }
+            .email-pad { padding-left: 22px !important; padding-right: 22px !important; }
+            .detail-label, .detail-value { display: block !important; width: 100% !important; text-align: left !important; }
+            .detail-value { padding-top: 4px !important; }
+            .cta { display: block !important; text-align: center !important; }
+        }
+    </style>
+</head>
+<body style="margin:0;padding:0;background:#f2f6fa;color:#17233b;font-family:Arial,'Helvetica Neue',sans-serif;">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">{{ extension_request.store.business_name }} requested the {{ extension_request.requested_plan }} plan.</div>
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;background:#f2f6fa;">
+    <tr><td align="center" style="padding:32px 14px;">
+        <table role="presentation" class="email-shell" width="620" cellspacing="0" cellpadding="0" border="0" style="width:620px;max-width:620px;background:#ffffff;border:1px solid #dce6f0;border-radius:18px;overflow:hidden;box-shadow:0 10px 30px rgba(15,46,92,.08);">
+            <tr><td class="email-pad" style="padding:28px 34px;background:#0b326b;">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"><tr>
+                    <td style="vertical-align:middle;"><span style="display:inline-block;color:#ffffff;font-size:24px;font-weight:800;letter-spacing:-1px;">OXPOS</span><span style="display:inline-block;width:7px;height:7px;margin-left:6px;border-radius:50%;background:#20d6b4;vertical-align:top;">&nbsp;</span></td>
+                    <td align="right" style="color:#9eeada;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;">Administration</td>
+                </tr></table>
+            </td></tr>
+            <tr><td class="email-pad" style="padding:34px 34px 12px;">
+                <span style="display:inline-block;padding:7px 11px;border-radius:999px;background:#e9fbf6;color:#087a65;font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;">Action requested</span>
+                <h1 style="margin:16px 0 8px;color:#102a56;font-size:27px;line-height:1.2;letter-spacing:-.5px;">New subscription extension request</h1>
+                <p style="margin:0;color:#607089;font-size:15px;line-height:1.65;">A store administrator is ready to renew. Review the requested plan and payment preference below.</p>
+            </td></tr>
+            <tr><td class="email-pad" style="padding:18px 34px;">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f7fafc;border:1px solid #e2eaf2;border-radius:14px;">
+                    <tr><td style="padding:22px 22px 8px;">
+                        <span style="display:block;color:#7a889e;font-size:11px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;">Store</span>
+                        <strong style="display:block;margin-top:5px;color:#102a56;font-size:19px;line-height:1.35;">{{ extension_request.store.business_name }}</strong>
+                        <span style="display:block;margin-top:3px;color:#6a7890;font-size:13px;">{{ extension_request.store.store_id }} · Request #{{ extension_request.pk }}</span>
+                    </td></tr>
+                    <tr><td style="padding:10px 22px 22px;">
+                        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                            <tr><td class="detail-label" width="48%" style="padding:10px 0;border-top:1px solid #e2eaf2;color:#7a889e;font-size:13px;">Requested plan</td><td class="detail-value" align="right" style="padding:10px 0;border-top:1px solid #e2eaf2;color:#102a56;font-size:14px;font-weight:700;"><span style="display:inline-block;padding:5px 10px;border-radius:999px;background:#dff8f1;color:#087a65;">{{ extension_request.requested_plan }}</span></td></tr>
+                            <tr><td class="detail-label" width="48%" style="padding:10px 0;border-top:1px solid #e2eaf2;color:#7a889e;font-size:13px;">Payment preference</td><td class="detail-value" align="right" style="padding:10px 0;border-top:1px solid #e2eaf2;color:#102a56;font-size:14px;font-weight:700;">{{ extension_request.payment_type }}</td></tr>
+                            <tr><td class="detail-label" width="48%" style="padding:10px 0;border-top:1px solid #e2eaf2;color:#7a889e;font-size:13px;">Current plan</td><td class="detail-value" align="right" style="padding:10px 0;border-top:1px solid #e2eaf2;color:#102a56;font-size:14px;font-weight:700;">{{ extension_request.store.active_plan }}</td></tr>
+                            <tr><td class="detail-label" width="48%" style="padding:10px 0;border-top:1px solid #e2eaf2;color:#7a889e;font-size:13px;">Subscription ended</td><td class="detail-value" align="right" style="padding:10px 0;border-top:1px solid #e2eaf2;color:#102a56;font-size:14px;font-weight:700;">{{ extension_request.store.subscription_end|date:"M j, Y"|default:"Not set" }}</td></tr>
+                        </table>
+                    </td></tr>
+                </table>
+            </td></tr>
+            <tr><td class="email-pad" style="padding:4px 34px 18px;">
+                <h2 style="margin:0 0 9px;color:#102a56;font-size:15px;">Requester</h2>
+                <p style="margin:0;color:#52627a;font-size:14px;line-height:1.6;"><strong style="color:#17233b;">{{ requester_name }}</strong> · @{{ extension_request.requested_by.username }}<br>{% if extension_request.requested_by.email %}<a href="mailto:{{ extension_request.requested_by.email }}" style="color:#096bd8;text-decoration:none;">{{ extension_request.requested_by.email }}</a>{% else %}No email provided{% endif %}</p>
+            </td></tr>
+            <tr><td class="email-pad" style="padding:0 34px 24px;">
+                <div style="padding:17px 18px;border-left:4px solid #20b99a;border-radius:4px 10px 10px 4px;background:#effaf7;">
+                    <span style="display:block;margin-bottom:7px;color:#087a65;font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;">Comments</span>
+                    <p style="margin:0;color:#30425d;font-size:14px;line-height:1.65;">{{ extension_request.comments|default:"No comments provided."|linebreaksbr }}</p>
+                </div>
+            </td></tr>
+            <tr><td class="email-pad" style="padding:0 34px 36px;">
+                <a class="cta" href="{{ admin_url }}" style="display:inline-block;padding:14px 22px;border-radius:10px;background:#0b62ce;color:#ffffff;font-size:14px;font-weight:700;text-decoration:none;">Review request in OXPOS&nbsp;&nbsp;→</a>
+                <p style="margin:13px 0 0;color:#8490a3;font-size:12px;line-height:1.5;">Completing the request activates the selected plan for one calendar month and emails the requester.</p>
+            </td></tr>
+            <tr><td class="email-pad" style="padding:22px 34px;background:#edf3f8;border-top:1px solid #dce6f0;color:#738198;font-size:11px;line-height:1.6;">
+                This operational notification was sent to <a href="mailto:{{ support_email }}" style="color:#315f9b;text-decoration:none;">{{ support_email }}</a>.<br>OXPOS · Retail operations, made clear.
+            </td></tr>
+        </table>
+    </td></tr>
+</table>
+</body>
+</html>

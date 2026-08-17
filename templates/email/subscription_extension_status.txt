@@ -1,0 +1,15 @@
+Hello {{ requester_name }},
+
+Your subscription extension request for {{ extension_request.store.business_name }} ({{ extension_request.store.store_id }}) is now {{ extension_request.status }}.
+
+Requested plan: {{ extension_request.requested_plan }}
+Preferred payment type: {{ extension_request.payment_type }}
+{% if extension_request.activated_at %}Subscription term: {{ extension_request.extension_start|date:"M d, Y" }} through {{ extension_request.extension_end|date:"M d, Y" }}
+Your store access is active now.
+{% elif extension_request.status == "In review" %}The OXPOS administration team is reviewing your request.
+{% elif extension_request.status == "Declined" %}Please contact OXPOS if you would like help with another plan or payment option.
+{% endif %}
+Thank you,
+OXPOS Administration
+
+Need help? Email {{ support_email }}.

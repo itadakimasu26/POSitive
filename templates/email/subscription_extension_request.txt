@@ -1,0 +1,17 @@
+A store administrator submitted a subscription extension request.
+
+Request ID: {{ extension_request.pk }}
+Store: {{ extension_request.store.business_name }} ({{ extension_request.store.store_id }})
+Current plan: {{ extension_request.store.active_plan }}
+Subscription ended: {{ extension_request.store.subscription_end|date:"M j, Y"|default:"Not set" }}
+Requested plan: {{ extension_request.requested_plan }}
+Preferred payment type: {{ extension_request.payment_type }}
+Requested by: {{ requester_name }} (@{{ extension_request.requested_by.username }})
+Requester email: {{ extension_request.requested_by.email|default:"Not provided" }}
+
+Comments:
+{{ extension_request.comments|default:"No comments provided." }}
+
+Review in OXPOS Administration: {{ admin_url }}
+
+This operational notification was sent to {{ support_email }}.
